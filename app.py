@@ -60,10 +60,10 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(120), nullable=False)
     last_login = db.Column(db.DateTime)
-    
+
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
-        
+
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
@@ -96,28 +96,28 @@ def init_admin():
 def login():
     if request.method == 'GET':
         return render_template('login.html')
-    
+
     data = request.json
     username = data.get('username')
     password = data.get('password')
-    
+
     user = User.query.filter_by(username=username).first()
-    
+
     if user and user.check_password(password):
         session.permanent = True  # 启用永久session
         session['logged_in'] = True
         session['user_id'] = user.id
         session['last_activity'] = datetime.now().isoformat()
-        
+
         # 更新最后登录时间
         user.last_login = datetime.now()
         db.session.commit()
-        
+
         return jsonify({
             'success': True,
             'message': '登录成功'
         })
-    
+
     return jsonify({
         'success': False,
         'message': '用户名或密码错误'
@@ -218,26 +218,26 @@ def handle_outgoing():
             product_id=data['product_id'],
             box_spec=data['box_spec']
         ).first()
-        
+
         if not stock:
             return jsonify({
                 'error': True,
                 'message': '产品不存在或规格不匹配'
             }), 404
-            
+
         if stock.quantity < data['quantity']:
             return jsonify({
                 'error': True,
                 'message': '库存不足'
             }), 400
-            
+
         # 更新库存
         stock.quantity -= data['quantity']
-        
+
         # 创建出库记录，确保ID唯一
         current_time = datetime.now()
         operation_id = generateUniqueId()
-        
+
         new_record = Record(
             id=operation_id,
             product_id=data['product_id'],
@@ -246,15 +246,15 @@ def handle_outgoing():
             date=current_time,  # 使用精确时间
             additional_info=f"箱规格: {data['box_spec']}"
         )
-        
+
         db.session.add(new_record)
         db.session.commit()
-        
+
         return jsonify({
             'error': False,
             'message': '出库成功'
         })
-        
+
     except Exception as e:
         db.session.rollback()
         return jsonify({
@@ -301,14 +301,14 @@ def update_stock():
         stocks = Stock.query.filter_by(product_id=data['product_id']).all()
         if not stocks:
             return jsonify({'success': False, 'message': '未找到产品库存信息'}), 404
-            
+
         in_transit = int(data['in_transit'])
         daily_consumption = float(data['daily_consumption'])
-        
+
         for stock in stocks:
             stock.in_transit = in_transit
             stock.daily_consumption = daily_consumption
-        
+
         db.session.commit()
         return jsonify({'success': True, 'message': '更新成功'})
     except Exception as e:

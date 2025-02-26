@@ -243,7 +243,7 @@ function displayStockList() {
                     specs: []
                 };
             }
-            
+
             // 计算该规格的总数量（箱数 * 规格数量）
             const specQuantity = item.quantity * parseInt(item.box_spec);
             groupedStock[item.product_id].total_stock += specQuantity;
@@ -330,10 +330,10 @@ function makeEditable(cell) {
 function saveProductChanges(productId, row) {
     const inTransitCell = row.querySelector('[data-field="in_transit"]');
     const dailyConsumptionCell = row.querySelector('[data-field="daily_consumption"]');
-    
+
     const inTransitInput = inTransitCell.querySelector('input');
     const dailyConsumptionInput = dailyConsumptionCell.querySelector('input');
-    
+
     const inTransit = inTransitInput ? parseInt(inTransitInput.value) : parseInt(inTransitCell.textContent);
     const dailyConsumption = dailyConsumptionInput ? parseFloat(dailyConsumptionInput.value) : parseFloat(dailyConsumptionCell.textContent);
 
@@ -375,9 +375,9 @@ function showProductSpecs() {
     const outgoingProductSelect = document.getElementById('outgoing-product-select');
     const boxSpecSelect = document.getElementById('outgoing-box-spec');
     const productId = outgoingProductSelect.value;
-    
+
     boxSpecSelect.innerHTML = '<option value="">请选择规格</option>';
-    
+
     if (productId) {
         fetch('/api/stock')
         .then(response => response.json())
@@ -398,7 +398,7 @@ function showProductSpecs() {
 function generateDeliveryNote() {
     let content = '提货单\n';
     content += '日期：' + new Date().toLocaleString() + '\n\n';
-    
+
     // 按产品ID分组计算
     const groupedProducts = outgoingList.reduce((acc, item) => {
         if (!acc[item.product_id]) {
@@ -416,22 +416,22 @@ function generateDeliveryNote() {
         });
         return acc;
     }, {});
-    
+
     // 计算总数据
     const totalTypes = Object.keys(groupedProducts).length;
     const totalBoxes = outgoingList.reduce((sum, item) => sum + item.quantity, 0);
     content += `总计：${totalTypes}个产品，${totalBoxes}箱\n\n`;
-    
+
     content += '产品清单：\n';
     content += '品名（总箱数）\t规格明细\t过期日期\n';
-    
+
     Object.entries(groupedProducts).forEach(([_, product]) => {
         content += `${product.product_name} (${product.total_quantity}箱)\n`;
         product.specs.forEach(spec => {
             content += `\t${spec.box_spec} - ${spec.quantity}箱\t${spec.expiry_date}\n`;
         });
     });
-    
+
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -445,9 +445,9 @@ function confirmOutgoing() {
         alert('待出库列表为空');
         return;
     }
-    
+
     // 创建所有出库请求的数组
-    const outgoingRequests = outgoingList.map(item => 
+    const outgoingRequests = outgoingList.map(item =>
         fetch('/api/outgoing', {
             method: 'POST',
             headers: {
@@ -463,7 +463,7 @@ function confirmOutgoing() {
             return data;
         })
     );
-    
+
     // 同时处理所有出库请求
     Promise.all(outgoingRequests)
         .then(results => {
@@ -487,11 +487,11 @@ function confirmOutgoing() {
 
             let successMessage = '出库成功！\n\n';
             successMessage += '日期：' + new Date().toLocaleString() + '\n\n';
-            
+
             const totalTypes = Object.keys(groupedProducts).length;
             const totalBoxes = outgoingList.reduce((sum, item) => sum + item.quantity, 0);
             successMessage += `总计：${totalTypes}个产品，${totalBoxes}箱\n\n`;
-            
+
             successMessage += '出库清单：\n';
             successMessage += '品名（总箱数）\t规格明细\t过期日期\n';
             Object.entries(groupedProducts).forEach(([_, product]) => {
@@ -500,7 +500,7 @@ function confirmOutgoing() {
                     successMessage += `\t${spec.box_spec} - ${spec.quantity}箱\t${spec.expiry_date}\n`;
                 });
             });
-            
+
             alert(successMessage);
             outgoingList = [];
             updateOutgoingTable();
@@ -517,46 +517,46 @@ function addToOutgoingList() {
     const productSelect = document.getElementById('outgoing-product-select');
     const boxSpecSelect = document.getElementById('outgoing-box-spec');
     const quantityInput = document.getElementById('outgoing-quantity');
-    
+
     const productId = productSelect.value;
     const boxSpec = boxSpecSelect.value;
     const quantity = parseInt(quantityInput.value);
-    
+
     if (!productId || !boxSpec || !quantity) {
         alert('请填写完整信息');
         return;
     }
-    
+
     // 获取当前选择规格的库存数量和过期日期
     fetch('/api/stock')
     .then(response => response.json())
     .then(stock => {
-        const currentStock = stock.find(s => 
-            s.product_id === productId && 
+        const currentStock = stock.find(s =>
+            s.product_id === productId &&
             s.box_spec === boxSpec
         );
-        
+
         if (!currentStock) {
             alert('无法获取库存信息');
             return;
         }
-        
+
         if (quantity > currentStock.quantity) {
             alert('出库数量不能大于库存数量');
             return;
         }
-        
+
         // 检查是否已经在列表中
-        const existingItem = outgoingList.find(item => 
-            item.product_id === productId && 
+        const existingItem = outgoingList.find(item =>
+            item.product_id === productId &&
             item.box_spec === boxSpec
         );
-        
+
         if (existingItem) {
             alert('该产品规格已在待出库列表中');
             return;
         }
-        
+
         // 获取产品信息并添加到列表
         fetch('/api/products')
         .then(response => response.json())
@@ -566,7 +566,7 @@ function addToOutgoingList() {
                 alert('无法获取产品信息');
                 return;
             }
-            
+
             outgoingList.push({
                 product_id: productId,
                 product_name: product.name,
@@ -574,7 +574,7 @@ function addToOutgoingList() {
                 quantity: quantity,
                 expiry_date: currentStock.expiry_date
             });
-            
+
             updateOutgoingTable();
             clearOutgoingForm();
         });
@@ -585,7 +585,7 @@ function addToOutgoingList() {
 function updateOutgoingTable() {
     const tbody = document.getElementById('outgoing-products-body');
     tbody.innerHTML = '';
-    
+
     outgoingList.forEach((item, index) => {
         const row = document.createElement('tr');
         row.innerHTML = `

@@ -33,7 +33,7 @@
         function togglePasswordVisibility() {
             const passwordInput = document.getElementById('password');
             const toggleButton = document.querySelector('.toggle-password');
-            
+
             if (passwordInput.type === 'password') {
                 passwordInput.type = 'text';
                 toggleButton.textContent = '👁‍🗨';
@@ -57,7 +57,7 @@
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
             const submitButton = document.querySelector('button[type="submit"]');
-            
+
             submitButton.disabled = true;
             submitButton.textContent = '登录中...';
 
@@ -92,4 +92,4 @@
         }
     </script>
 </body>
-</html> 
+</html>
