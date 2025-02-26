@@ -1,0 +1,333 @@
+/* 整体页面设置 */
+body {
+    font-family: 'Inter', sans-serif;
+    display: flex;
+    margin: 0;
+    background-color: #f9f9f9;
+    color: #333;
+}
+
+/* 侧边栏样式 */
+.sidebar {
+    width: 10%;
+    height: 50%;
+    background-color: #f0f0f0;
+    padding: 15px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: fixed;
+    top: 0;
+}
+
+.sidebar button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 10px 15px;
+    margin-bottom: 10px;
+    border: none;
+    border-radius: 8px;
+    background-color: #FFFF00; /* 黄色 */
+    color: #333; /* 深色文字 */
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.sidebar button:hover {
+    background-color: #FFD700; /* 悬停时稍微深一些的黄色 */
+}
+
+/* logo 样式 */
+.sidebar .logo {
+    width: 40px;
+    height: 40px;
+    margin-bottom: 15px;
+    object-fit: contain;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* 主要内容区域样式 */
+.main-content {
+    width: 90%;
+    padding: 20px;
+    margin-left: 15%;
+    background-color: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* 选项卡内容样式 */
+.tab-content {
+    display: none;
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* 输入框和下拉选择框样式 */
+input[type="text"],
+input[type="number"],
+select {
+    width: 100%;
+    padding: 10px;
+    margin: 8px 0;
+    box-sizing: border-box;
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+select:focus {
+    border-color: #FFFF00; /* 聚焦时使用黄色 */
+    box-shadow: 0 0 5px rgba(255, 255, 0, 0.5);
+}
+
+/* 提交按钮和其他按钮样式 */
+input[type="submit"],
+button {
+    background-color: #007BFF; /* 蓝色背景 */
+    color: white; /* 白色文字 */
+    padding: 12px 20px;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+input[type="submit"]:hover,
+button:hover {
+    background-color: #0056b3; /* 悬停时稍微深一些的蓝色 */
+}
+
+/* 表格样式 */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+th,
+td {
+    border: none;
+    padding: 10px 15px;
+    text-align: left;
+    border-bottom: 1px solid #eaeaea;
+}
+
+th {
+    background-color: #FFFF00; /* 表头使用黄色 */
+    font-weight: 600;
+    color: #333;
+}
+
+/* 表格行鼠标悬停效果 */
+tr:hover {
+    background-color: #f0f0f0;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+   .sidebar {
+        width: 100%;
+        position: relative;
+        margin-bottom: 20px;
+    }
+
+   .main-content {
+        width: 100%;
+        margin-left: 0;
+    }
+}
+
+/* 登录页面样式优化 */
+.login-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+}
+
+.login-box {
+    background: white;
+    padding: 2.5rem;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 400px;
+    transition: transform 0.3s ease;
+}
+
+.login-box:hover {
+    transform: translateY(-5px);
+}
+
+.login-box h2 {
+    text-align: center;
+    color: #2c3e50;
+    margin-bottom: 2rem;
+    font-size: 1.8rem;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #34495e;
+    font-weight: 500;
+}
+
+.password-input-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.toggle-password {
+    position: absolute;
+    right: 10px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    font-size: 1.2rem;
+}
+
+.error-message {
+    background-color: #ff6b6b;
+    color: white;
+    padding: 0.8rem;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+    text-align: center;
+    font-size: 0.9rem;
+}
+
+.login-button {
+    width: 100%;
+    padding: 0.8rem;
+    background-color: #4834d4;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.login-button:hover {
+    background-color: #686de0;
+}
+
+.login-button:disabled {
+    background-color: #b2bec3;
+    cursor: not-allowed;
+}
+
+/* 响应式设计 */
+@media (max-width: 480px) {
+   .login-box {
+        margin: 1rem;
+        padding: 1.5rem;
+    }
+}
+
+/* 出库操作样式 */
+.outgoing-form {
+    margin-bottom: 2rem;
+    padding: 1rem;
+    background-color: #f9f9f9;
+    border-radius: 4px;
+}
+
+.outgoing-list {
+    margin-top: 2rem;
+}
+
+.outgoing-actions {
+    margin-top: 1rem;
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+}
+
+/* 产品主行样式 */
+.product-main-row {
+    background-color: #f8f9fa;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+/* 规格行样式 */
+.product-spec-row {
+    background-color: #ffffff;
+    font-size: 0.95em;
+}
+
+.product-spec-row td {
+    padding-left: 30px;
+    color: #666;
+}
+
+/* 查看规格按钮样式 */
+.product-main-row button {
+    padding: 4px 8px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.product-main-row button:hover {
+    background-color: #0056b3;
+}
+
+/* 可编辑单元格样式 */
+.editable {
+    cursor: pointer;
+    position: relative;
+}
+
+.editable:hover {
+    background-color: #f0f0f0;
+}
+
+.editable input {
+    width: 100%;
+    padding: 4px;
+    border: 1px solid #007bff;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+/* 规格行样式调整 */
+.product-spec-row td {
+    padding: 8px 15px 8px 30px;
+    color: #666;
+}
+
+/* 保存按钮样式 */
+.product-main-row button.save {
+    background-color: #28a745;
+}
+
+.product-main-row button.save:hover {
+    background-color: #218838;
+}

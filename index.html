@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>仓库管理系统</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/0.4.1/html2canvas.min.js"></script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <style>
+        body {
+            cursor: url('{{ url_for('static', filename='images/lemon_cursor.png') }}'), auto; /* 使用柠檬光标图片 */
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <img src="{{ url_for('static', filename='images/lemon.png') }}" alt="柠檬" class="logo">
+        <button onclick="showTab('product')">产品管理</button>
+        <button onclick="showTab('incoming')">入库操作</button>
+        <button onclick="showTab('outgoing')">出库操作</button>
+        <button onclick="showTab('records')">出入库记录</button>
+        <button onclick="showTab('stock')">库存页面</button>
+    </div>
+    <div class="main-content">
+        <!-- 产品管理 -->
+        <div id="product" class="tab-content">
+            <h2>产品管理</h2>
+            <div>
+                <h3>新增产品</h3>
+                <label for="new-product-id">产品编号:</label>
+                <input type="text" id="new-product-id" required>
+                <label for="new-product-name">品名:</label>
+                <input type="text" id="new-product-name" required>
+                <label for="new-product-english-name">英文名:</label>
+                <input type="text" id="new-product-english-name" required>
+                <label for="new-product-category">产品类别:</label>
+                <input type="text" id="new-product-category" required>
+                <label for="new-product-supplier">供应商:</label>
+                <input type="text" id="new-product-supplier" required>
+                <label for="new-product-unit">产品单位:</label>
+                <select id="new-product-unit" required>
+                    <option value="">请选择单位</option>
+                    <option value="个">个</option>
+                    <option value="包">包</option>
+                    <option value="单">单</option>
+                    <option value="卷">卷</option>
+                    <option value="张">张</option>
+                    <option value="扎">扎</option>
+                    <option value="瓶">瓶</option>
+                    <option value="盒">盒</option>
+                    <option value="箱">箱</option>
+                    <option value="颗">颗</option>
+                </select>
+                <button onclick="addProduct()">新增</button>
+            </div>
+            <div>
+                <h3>产品清单</h3>
+                <table id="product-list">
+                    <thead>
+                        <tr>
+                            <th>产品编号</th>
+                            <th>品名</th>
+                            <th>英文名</th>
+                            <th>产品类别</th>
+                            <th>供应商</th>
+                            <th>产品单位</th>
+                        </tr>
+                    </thead>
+                    <tbody id="product-list-body"></tbody>
+                </table>
+            </div>
+        </div>
+        <!-- 入库操作 -->
+        <div id="incoming" class="tab-content" style="display: none;">
+            <h2>入库操作</h2>
+            <label for="incoming-product-id">产品编号:</label>
+            <select id="incoming-product-id" required></select>
+            <label for="incoming-box-spec">箱规格:</label>
+            <input type="text" id="incoming-box-spec" required>
+            <label for="incoming-box-quantity">箱数:</label>
+            <input type="number" id="incoming-box-quantity" required>
+            <label for="incoming-shelf-life">保质期:</label>
+            <input type="date" id="incoming-shelf-life" required>
+            <button onclick="recordIncoming()">确认入库</button>
+        </div>
+        <!-- 出库操作 -->
+        <div id="outgoing" class="tab-content" style="display: none;">
+            <h2>出库操作</h2>
+            <div class="outgoing-form">
+                <div>
+                    <label for="outgoing-product-select">选择产品:</label>
+                    <select id="outgoing-product-select" onchange="showProductSpecs()">
+                        <option value="">请选择产品</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="outgoing-box-spec">选择规格:</label>
+                    <select id="outgoing-box-spec"></select>
+                </div>
+                <div>
+                    <label for="outgoing-quantity">出库数量:</label>
+                    <input type="number" id="outgoing-quantity" min="1">
+                </div>
+                <button onclick="addToOutgoingList()">添加到待出库列表</button>
+            </div>
+            
+            <div class="outgoing-list">
+                <h3>待出库列表</h3>
+                <table id="outgoing-products-table">
+                    <thead>
+                        <tr>
+                            <th>品名</th>
+                            <th>规格</th>
+                            <th>箱数</th>
+                            <th>过期日期</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="outgoing-products-body"></tbody>
+                </table>
+                <div class="outgoing-actions">
+                    <button onclick="generateDeliveryNote()">生成提货单</button>
+                    <button onclick="confirmOutgoing()">确认出库</button>
+                </div>
+            </div>
+        </div>
+        <!-- 出入库记录 -->
+<div id="records" class="tab-content" style="display: none;">
+    <h2>出入库记录</h2>
+    <table id="record-list">
+        <thead>
+            <tr>
+                <th>操作编号</th>
+                <th>产品编号</th>
+                <th>品名</th>
+                <th>数量</th>
+                <th>日期</th>
+                <th>操作类型</th>
+            </tr>
+        </thead>
+        <tbody id="record-list-body"></tbody>
+    </table>
+</div>
+
+       <!-- 库存页面 -->
+    <div id="stock" class="tab-content" style="display: none;">
+    <h2>库存页面</h2>
+    <table id="stock-list">
+        <thead>
+            <tr>
+                <th>产品编号</th>
+                <th>品名</th>
+                <th>英文名</th>
+                <th>产品类别</th>
+                <th>供应商</th>
+                <th>产品单位</th>
+                <th>香港库存</th>
+                <th>在途数量</th>
+                <th>每日消耗</th>
+                <th>规格</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="stock-list-body"></tbody>
+    </table>
+</div>
+
+    </div>
+</body>
+</html>
