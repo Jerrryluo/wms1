@@ -3,19 +3,29 @@ name: Deploy to PythonAnywhere
 on:
   push:
     branches:
-      - main  # 监控 main 分支的推送
+      - master  # 你希望触发部署的分支
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v2
 
-    - name: Deploy to PythonAnywhere
-      env:
-        PA_API_TOKEN: ${{ secrets.PA_API_TOKEN }}  # 在 GitHub Secrets 中设置
-      run: |
-        curl -X POST https://www.pythonanywhere.com/api/v0/user/你的用户名/webapps/你的应用名/reload/ \
-        -H "Authorization: Token $PA_API_TOKEN"
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.8'  # 根据你的项目需要选择 Python 版本
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Deploy to PythonAnywhere
+        env:
+          PA_USERNAME: ${{ secrets.PA_USERNAME }}  # PythonAnywhere 用户名
+          PA_PASSWORD: ${{ secrets.PA_PASSWORD }}  # PythonAnywhere 密码
+        run: |
+          echo "Deploying to PythonAnywhere..."
+          echo "your_password" | sshpass -p $PA_PASSWORD ssh $PA_USERNAME@ssh.pythonanywhere.com 'cd ~/你的项目目录 && git pull origin master && source venv/bin/activate && pip install -r requirements.txt && touch your_wsgi_file.wsgi'
