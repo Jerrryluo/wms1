@@ -27,5 +27,5 @@ jobs:
           PA_API_TOKEN: ${{ secrets.PA_API_TOKEN }}  # PythonAnywhere API 令牌
         run: |
           echo "Deploying to PythonAnywhere..."
-          curl -X POST https://www.pythonanywhere.com/api/v0/user/你的用户名/webapps/你的应用名/reload/ \
+          curl -X POST https://www.pythonanywhere.com/api/v0/user/lemonboxwms1/webapps/reload/ \
           -H "Authorization: Token $PA_API_TOKEN"
