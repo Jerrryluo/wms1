@@ -1,93 +1,397 @@
+<!-- 主页面HTML文档，设置中文语言和UTF-8编码，作为系统的核心界面 -->
 <!DOCTYPE html>
 <html lang="zh">
 <head>
+    <!-- 页面元数据设置，包括字符编码、视口配置和页面标题 -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>仓库管理系统</title>
+    <!-- 引入外部资源，包括样式表和JavaScript库，用于增强页面功能 -->
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/0.4.1/html2canvas.min.js"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.16.9/xlsx.full.min.js"></script>
     <style>
         body {
-            cursor: url('{{ url_for('static', filename='images/lemon_cursor.png') }}'), auto; /* 使用柠檬光标图片 */
+            cursor: url("{{ url_for('static', filename='images/lemon_cursor.png') }}"), auto; /* 使用柠檬光标图片 */
+        }
+
+        /* 用户信息区域样式 */
+        .user-info {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            z-index: 100;
+        }
+
+        .user-info .username {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .user-info button {
+            padding: 5px 10px;
+            background-color: #f0f0f0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .user-info button:hover {
+            background-color: #e0e0e0;
+        }
+
+        /* 欢迎动画层样式 */
+        .welcome-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #FFFF00 0%, #FFD700 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 1;
+            visibility: visible;
+            transition: opacity 1s ease;
+        }
+
+        .welcome-screen.hide {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .welcome-content {
+            text-align: center;
+        }
+
+        .logo-animation {
+            font-size: 48px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 20px;
+            animation: logoScale 0.5s ease;
+        }
+
+        .loading-bar {
+            width: 200px;
+            height: 4px;
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 2px;
+            margin: 20px auto;
+            overflow: hidden;
+        }
+
+        .loading-progress {
+            width: 100%;
+            height: 100%;
+            background: #333;
+            animation: loading 0.5s ease-in-out;
+            transform-origin: left;
+        }
+
+        .welcome-text {
+            font-size: 18px;
+            color: #333;
+            opacity: 0;
+            animation: fadeIn 0.5s ease 0.15s forwards;
+        }
+
+        @keyframes logoScale {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes loading {
+            0% { transform: scaleX(0); }
+            100% { transform: scaleX(1); }
+        }
+
+        @keyframes fadeIn {
+            0% { opacity: 0; transform: translateY(10px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 移位操作按钮样式 */
+        .outgoing-actions button {
+            padding: 8px 16px;
+            font-size: 14px;
+            background-color: #4CAF50;
+            color: rgb(5, 5, 5);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        .outgoing-actions button:hover {
+            background-color: #45a049;
         }
     </style>
 </head>
 <body>
-    <div class="sidebar">
-        <img src="{{ url_for('static', filename='images/lemon.png') }}" alt="柠檬" class="logo">
-        <button onclick="showTab('product')">产品管理</button>
-        <button onclick="showTab('incoming')">入库操作</button>
-        <button onclick="showTab('outgoing')">出库操作</button>
-        <button onclick="showTab('records')">出入库记录</button>
-        <button onclick="showTab('stock')">库存页面</button>
+    <!-- 欢迎动画层 -->
+    <div class="welcome-screen" id="welcomeScreen">
+        <div class="welcome-content">
+            <div class="logo-animation">LB WMS</div>
+            <div class="loading-bar">
+                <div class="loading-progress"></div>
+            </div>
+            <div class="welcome-text">欢迎使用仓库管理系统</div>
+        </div>
     </div>
+
+    <!-- 用户信息区域，显示当前用户名和退出登录按钮 -->
+    <div class="user-info">
+        <span class="username" id="current-username">加载中...</span>
+        <button onclick="showTab('user')">用户管理</button>
+        <button onclick="logout()">退出登录</button>
+    </div>
+
+    <!-- 侧边导航栏，包含系统Logo和功能模块切换按钮，提供主要功能入口 -->
+    <div class="sidebar">
+        <!-- 系统Logo图片，使用柠檬图标作为品牌标识 -->
+        <div class="logo-container">
+            <img src="{{ url_for('static', filename='images/lemon.png') }}" alt="柠檬" class="logo">
+        </div>
+
+        <!-- 商户选择下拉菜单，显示当前商户并允许切换 -->
+        <div class="merchant-selector">
+            <div class="current-merchant" id="current-merchant">
+                <span id="current-merchant-name">加载中...</span>
+                <span class="dropdown-icon">▼</span>
+            </div>
+            <div class="merchant-dropdown" id="merchant-dropdown">
+                <!-- 商户列表将通过JavaScript动态加载 -->
+            </div>
+        </div>
+
+        <!-- 功能模块导航按钮，点击时触发对应的showTab函数切换显示内容 -->
+        <button id="nav-product" onclick="showTab('product')">产品管理</button>
+        <button id="nav-incoming" onclick="showTab('incoming')">入库操作</button>
+        <button id="nav-outgoing" onclick="showTab('outgoing')">出库操作</button>
+        <button id="nav-records" onclick="showTab('records')">出入库记录</button>
+        <button id="nav-stock" onclick="showTab('stock')">库存页面</button>
+        <button id="nav-location" onclick="showTab('location-query')">库位查询</button>
+
+        <!-- 商户管理按钮，位于侧边栏底部 -->
+        <button id="nav-merchant" class="merchant-manage-btn" onclick="showTab('merchant')">商户管理</button>
+    </div>
+
+    <!-- 主要内容区域，包含所有功能模块的操作界面，通过tab切换显示 -->
     <div class="main-content">
-        <!-- 产品管理 -->
+        <!-- 产品管理模块，支持产品的添加、查看和管理功能 -->
         <div id="product" class="tab-content">
             <h2>产品管理</h2>
+            <!-- 新增产品表单区域，包含所有必要的产品信息输入字段 -->
             <div>
                 <h3>新增产品</h3>
-                <label for="new-product-id">产品编号:</label>
-                <input type="text" id="new-product-id" required>
-                <label for="new-product-name">品名:</label>
-                <input type="text" id="new-product-name" required>
-                <label for="new-product-english-name">英文名:</label>
-                <input type="text" id="new-product-english-name" required>
-                <label for="new-product-category">产品类别:</label>
-                <input type="text" id="new-product-category" required>
-                <label for="new-product-supplier">供应商:</label>
-                <input type="text" id="new-product-supplier" required>
-                <label for="new-product-unit">产品单位:</label>
-                <select id="new-product-unit" required>
-                    <option value="">请选择单位</option>
-                    <option value="个">个</option>
-                    <option value="包">包</option>
-                    <option value="单">单</option>
-                    <option value="卷">卷</option>
-                    <option value="张">张</option>
-                    <option value="扎">扎</option>
-                    <option value="瓶">瓶</option>
-                    <option value="盒">盒</option>
-                    <option value="箱">箱</option>
-                    <option value="颗">颗</option>
-                </select>
-                <button onclick="addProduct()">新增</button>
+                <!-- 产品基本信息输入字段组，使用新的网格布局 -->
+                <div class="form-layout">
+                    <div>
+                        <label for="new-product-id">产品编号:</label>
+                        <input type="text" id="new-product-id" placeholder="“商家缩写英文+数字”格式录入" required>
+                    </div>
+                    <div>
+                        <label for="new-product-name">品名:</label>
+                        <input type="text" id="new-product-name" placeholder="“商家+产品名”格式录入" required>
+                    </div>
+
+                    <div>
+                        <label for="new-product-category">产品类别:</label>
+                        <select id="new-product-category" required>
+                            <option value="">请选择类别</option>
+                            <option value="补剂">补剂</option>
+                            <option value="包装用耗材">包装用耗材</option>
+                            <option value="生产用耗材">生产用耗材</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="new-product-supplier">供应商:</label>
+                        <input type="text" id="new-product-supplier" required>
+                    </div>
+                    <div>
+                        <label for="new-product-unit">产品单位:</label>
+                        <select id="new-product-unit" required>
+                            <option value="">请选择单位</option>
+                            <option value="个">个</option>
+                            <option value="包">包</option>
+                            <option value="单">单</option>
+                            <option value="卷">卷</option>
+                            <option value="张">张</option>
+                            <option value="扎">扎</option>
+                            <option value="瓶">瓶</option>
+                            <option value="盒">盒</option>
+                            <option value="箱">箱</option>
+                            <option value="颗">颗</option>
+                        </select>
+                    </div>
+                    <div class="form-button-container">
+                        <button onclick="addProduct()">新增</button>
+                    </div>
+                </div>
             </div>
+
+            <!-- 产品列表显示区域，支持多种排序方式和产品管理操作 -->
             <div>
                 <h3>产品清单</h3>
-                <table id="product-list">
-                    <thead>
-                        <tr>
-                            <th>产品编号</th>
-                            <th>品名</th>
-                            <th>英文名</th>
-                            <th>产品类别</th>
-                            <th>供应商</th>
-                            <th>产品单位</th>
-                        </tr>
-                    </thead>
-                    <tbody id="product-list-body"></tbody>
-                </table>
+                <!-- 排序按钮组，支持按不同字段排序显示产品列表 -->
+                <button onclick="sortProductList('id')">按产品编号排序</button>
+                <button onclick="sortProductList('name')">按品名排序</button>
+
+                <button onclick="sortProductList('category')">按产品类别排序</button>
+                <button onclick="sortProductList('supplier')">按供应商排序</button>
+                <button onclick="sortProductList('unit')">按产品单位排序</button>
+                <!-- 产品列表表格，动态显示所有产品信息 -->
+                <div class="table-container">
+                    <table id="product-list">
+                        <thead>
+                            <tr>
+                                <th>产品编号</th>
+                                <th>品名</th>
+                                <th>产品类别</th>
+                                <th>供应商</th>
+                                <th>产品单位</th>
+                                <th class="actions-column">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="product-list-body"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
-        <!-- 入库操作 -->
+
+        <!-- 入库操作模块，处理产品入库流程和记录 -->
         <div id="incoming" class="tab-content" style="display: none;">
             <h2>入库操作</h2>
-            <label for="incoming-product-id">产品编号:</label>
-            <select id="incoming-product-id" required></select>
-            <label for="incoming-box-spec">箱规格:</label>
-            <input type="text" id="incoming-box-spec" required>
-            <label for="incoming-box-quantity">箱数:</label>
-            <input type="number" id="incoming-box-quantity" required>
-            <label for="incoming-shelf-life">保质期:</label>
-            <input type="date" id="incoming-shelf-life" required>
-            <button onclick="recordIncoming()">确认入库</button>
+            <div class="form-layout">
+
+                <!-- 入库信息表单，使用新的网格布局 -->
+                <div>
+                    <label for="incoming-product-id">产品编号:</label>
+                    <select id="incoming-product-id" required></select>
+                </div>
+                <div>
+                    <label for="incoming-box-spec">箱规格:</label>
+                    <input type="text" id="incoming-box-spec" required>
+                </div>
+                <div>
+                    <label for="incoming-box-quantity">箱数:</label>
+                    <input type="number" id="incoming-box-quantity" required>
+                </div>
+                <div>
+                    <label for="incoming-batch-number">批次号:</label>
+                    <input type="text" id="incoming-batch-number" required value="请输入批次号">
+                </div>
+                <div>
+                    <label for="incoming-reason">入库原因:</label>
+                    <select id="incoming-reason" required>
+                        <option value="采购" selected>采购</option>
+                        <option value="盘盈">盘盈</option>
+                        <option value="移位">移位</option>
+                        <option value="操作失误">操作失误</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="incoming-shelf-life">保质期:</label>
+                    <input type="date" id="incoming-shelf-life" required>
+                </div>
+                <div>
+                    <label for="incoming-location">库位:</label>
+                    <select id="incoming-location" required>
+                        <option value="">请选择库位</option>
+                        <option value="A1">A1</option>
+                        <option value="A2">A2</option>
+                        <option value="A3">A3</option>
+                        <option value="A4">A4</option>
+                        <option value="A5">A5</option>
+                        <option value="A6">A6</option>
+                        <option value="A7">A7</option>
+                        <option value="A8">A8</option>
+                        <option value="A12">A12</option>
+                        <option value="A13">A13</option>
+                        <option value="A14">A14</option>
+                        <option value="A15">A15</option>
+                        <option value="A16">A16</option>
+                        <option value="A17">A17</option>
+                        <option value="A18">A18</option>
+                        <option value="A19">A19</option>
+                        <option value="A20">A20</option>
+                        <option value="A21">A21</option>
+                        <option value="A22">A22</option>
+                        <option value="A23">A23</option>
+                        <option value="B1">B1</option>
+                        <option value="B2">B2</option>
+                        <option value="B3">B3</option>
+                        <option value="B4">B4</option>
+                        <option value="B5">B5</option>
+                        <option value="B6">B6</option>
+                        <option value="B7">B7</option>
+                        <option value="B8">B8</option>
+                        <option value="B9">B9</option>
+                        <option value="B10">B10</option>
+                        <option value="B11">B11</option>
+                        <option value="B12">B12</option>
+                        <option value="B13">B13</option>
+                        <option value="B15">B15</option>
+                        <option value="C1">C1</option>
+                        <option value="O301">O301</option>
+                        <option value="O302">O302</option>
+                        <option value="O303">O303</option>
+                        <option value="O401">O401</option>
+                        <option value="O402">O402</option>
+                        <option value="O403">O403</option>
+                        <option value="Shenzhen">Shenzhen</option>
+                    </select>
+                </div>
+                <div class="form-button-container">
+                    <button onclick="addToIncomingList()">添加到待入库列表</button>
+                </div>
+            </div>
+
+            <!-- 待入库列表显示区域 -->
+            <h3>待入库列表</h3>
+            <div class="table-container">
+                <table id="incoming-products-table">
+                    <thead>
+                        <tr>
+                            <th>品名</th>
+                            <th>库位</th>
+                            <th>规格</th>
+                            <th>箱数</th>
+                            <th>批次号</th>
+                            <th>过期日期</th>
+                            <th>入库原因</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="incoming-products-body">
+                        <!-- 待入库列表将通过JavaScript动态加载 -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="form-button-container" style="margin-top: 20px;">
+                <button onclick="recordIncoming()">确认入库</button>
+            </div>
+            </div>
         </div>
-        <!-- 出库操作 -->
-        <div id="outgoing" class="tab-content" style="display: none;">
-            <h2>出库操作</h2>
-            <div class="outgoing-form">
+
+        <!-- 出库操作模块，处理产品出库流程和记录 -->
+        <div id="outgoing" class="tab-content">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0;">出库操作</h2>
+                <div class="outgoing-actions">
+                    <button onclick="showTab('relocation')" style="background-color: #2196F3;">移位操作</button>
+                </div>
+            </div>
+            <!-- 出库产品选择和数量输入区域，使用新的网格布局 -->
+            <div class="form-layout">
                 <div>
                     <label for="outgoing-product-select">选择产品:</label>
                     <select id="outgoing-product-select" onchange="showProductSpecs()">
@@ -96,76 +400,455 @@
                 </div>
                 <div>
                     <label for="outgoing-box-spec">选择规格:</label>
-                    <select id="outgoing-box-spec"></select>
+                    <select id="outgoing-box-spec">
+                        <option value="">请选择规格</option>
+                    </select>
                 </div>
                 <div>
                     <label for="outgoing-quantity">出库数量:</label>
-                    <input type="number" id="outgoing-quantity" min="1">
+                    <input type="number" id="outgoing-quantity" placeholder="出库数量" min="1" required>
                 </div>
-                <button onclick="addToOutgoingList()">添加到待出库列表</button>
+                <div>
+                    <label for="outgoing-reason">出库原因:</label>
+                    <select id="outgoing-reason" required>
+                        <option value="生产" selected>生产</option>
+                        <option value="报废">报废</option>
+                        <option value="盘亏">盘亏</option>
+                        <option value="移位">移位</option>
+                        <option value="操作失误">操作失误</option>
+                    </select>
+                </div>
+                <div class="form-button-container">
+                    <button onclick="addToOutgoingList()">添加到待出库列表</button>
+                </div>
             </div>
 
-            <div class="outgoing-list">
-                <h3>待出库列表</h3>
+            <!-- 待出库列表显示区域，显示待处理的出库项目 -->
+            <h3>待出库列表</h3>
+            <div class="table-container">
                 <table id="outgoing-products-table">
                     <thead>
                         <tr>
                             <th>品名</th>
+                            <th>库位</th>
                             <th>规格</th>
                             <th>箱数</th>
+                            <th>批次号</th>
                             <th>过期日期</th>
                             <th>操作</th>
                         </tr>
                     </thead>
                     <tbody id="outgoing-products-body"></tbody>
                 </table>
-                <div class="outgoing-actions">
-                    <button onclick="generateDeliveryNote()">生成提货单</button>
-                    <button onclick="confirmOutgoing()">确认出库</button>
+            </div>
+            <!-- 出库操作按钮组，包含生成提货单和确认出库功能 -->
+            <div class="outgoing-actions">
+                <button onclick="generateDeliveryNote()">生成提货单</button>
+                <button onclick="confirmOutgoing()">确认出库</button>
+            </div>
+        </div>
+
+        <!-- 移位操作模块，处理产品移位流程和记录 -->
+        <div id="relocation" class="tab-content" style="display: none;">
+            <h2>移位操作</h2>
+            <!-- 选择产品和规格 -->
+            <div class="form-layout">
+                <div>
+                    <label for="relocation-product-select">选择产品:</label>
+                    <select id="relocation-product-select" onchange="showProductSpecsForRelocation()">
+                        <option value="">请选择产品</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="relocation-box-spec">选择规格:</label>
+                    <select id="relocation-box-spec">
+                        <option value="">请选择规格</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="relocation-quantity">移位数量:</label>
+                    <input type="number" id="relocation-quantity" placeholder="移位数量" min="1" required>
+                </div>
+                <div>
+                    <label for="relocation-new-location">新库位:</label>
+                    <select id="relocation-new-location" required>
+                        <option value="">请选择新库位</option>
+                        <option value="A1">A1</option>
+                        <option value="A2">A2</option>
+                        <option value="A3">A3</option>
+                        <option value="A4">A4</option>
+                        <option value="A5">A5</option>
+                        <option value="A6">A6</option>
+                        <option value="A7">A7</option>
+                        <option value="A8">A8</option>
+                        <option value="A12">A12</option>
+                        <option value="A13">A13</option>
+                        <option value="A14">A14</option>
+                        <option value="A15">A15</option>
+                        <option value="A16">A16</option>
+                        <option value="A17">A17</option>
+                        <option value="A18">A18</option>
+                        <option value="A19">A19</option>
+                        <option value="A20">A20</option>
+                        <option value="A21">A21</option>
+                        <option value="A22">A22</option>
+                        <option value="A23">A23</option>
+                        <option value="B1">B1</option>
+                        <option value="B2">B2</option>
+                        <option value="B3">B3</option>
+                        <option value="B4">B4</option>
+                        <option value="B5">B5</option>
+                        <option value="B6">B6</option>
+                        <option value="B7">B7</option>
+                        <option value="B8">B8</option>
+                        <option value="B9">B9</option>
+                        <option value="B10">B10</option>
+                        <option value="B11">B11</option>
+                        <option value="B12">B12</option>
+                        <option value="B13">B13</option>
+                        <option value="B15">B15</option>
+                        <option value="C1">C1</option>
+                        <option value="O301">O301</option>
+                        <option value="O302">O302</option>
+                        <option value="O303">O303</option>
+                        <option value="O401">O401</option>
+                        <option value="O402">O402</option>
+                        <option value="O403">O403</option>
+                        <option value="Shenzhen">Shenzhen</option>
+                    </select>
+                </div>
+                <div class="form-button-container">
+                    <button onclick="addToRelocationList()">添加到待移位列表</button>
+                </div>
+            </div>
+
+            <!-- 待移位列表 -->
+            <h3>待移位列表</h3>
+            <div class="table-container">
+                <table id="relocation-products-table">
+                    <thead>
+                        <tr>
+                            <th>品名</th>
+                            <th>原库位</th>
+                            <th>新库位</th>
+                            <th>规格</th>
+                            <th>箱数</th>
+                            <th>批次号</th>
+                            <th>过期日期</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="relocation-products-body"></tbody>
+                </table>
+            </div>
+            <!-- 移位操作按钮 -->
+            <div class="relocation-actions">
+                <button onclick="confirmRelocation()">确认移位</button>
+            </div>
+            <div class="form-layout">
+                <div>
                 </div>
             </div>
         </div>
-        <!-- 出入库记录 -->
-<div id="records" class="tab-content" style="display: none;">
-    <h2>出入库记录</h2>
-    <table id="record-list">
-        <thead>
-            <tr>
-                <th>操作编号</th>
-                <th>产品编号</th>
-                <th>品名</th>
-                <th>数量</th>
-                <th>日期</th>
-                <th>操作类型</th>
-            </tr>
-        </thead>
-        <tbody id="record-list-body"></tbody>
-    </table>
-</div>
 
-       <!-- 库存页面 -->
-    <div id="stock" class="tab-content" style="display: none;">
-    <h2>库存页面</h2>
-    <table id="stock-list">
-        <thead>
-            <tr>
-                <th>产品编号</th>
-                <th>品名</th>
-                <th>英文名</th>
-                <th>产品类别</th>
-                <th>供应商</th>
-                <th>产品单位</th>
-                <th>香港库存</th>
-                <th>在途数量</th>
-                <th>每日消耗</th>
-                <th>规格</th>
-                <th>操作</th>
-            </tr>
-        </thead>
-        <tbody id="stock-list-body"></tbody>
-    </table>
-</div>
+        <!-- 出入库记录模块，显示历史操作记录 -->
+        <div id="records" class="tab-content" style="display: none;">
+            <h2>出入库记录</h2>
+            <!-- 按钮组 -->
+            <div class="records-action-buttons">
+
+                <button onclick="resetRecordFilters()">重置筛选</button>
+                <button id="export-records-btn" onclick="exportRecordsToExcel()">导出记录</button>
+
+            </div>
+            <!-- 记录查询和过滤功能区域 -->
+            <div class="records-filter-actions">
+                <div>
+                    日期范围
+                    <div class="date-range-container">
+                        <input type="date" id="record-start-date-filter" placeholder="起始日" onchange="displayRecords()">
+                        <span>至</span>
+                        <input type="date" id="record-end-date-filter" placeholder="结束日" onchange="displayRecords()">
+                    </div>
+                </div>
+                <div>
+                    品名
+                    <select id="record-product-filter" onchange="displayRecords()">
+                        <option value="">全部产品</option>
+                    </select>
+                </div>
+                <div>
+                    操作类型
+                    <select id="record-operation-filter" onchange="displayRecords()">
+                        <option value="">全部类型</option>
+                        <option value="入库">入库</option>
+                        <option value="出库">出库</option>
+                    </select>
+                </div>
+                <div>
+                    库位
+                    <select id="record-location-filter" onchange="displayRecords()">
+                        <option value="">全部库位</option>
+                    </select>
+                </div>
+                <div>
+                    操作原因
+                    <select id="record-reason-filter" onchange="displayRecords()">
+                    </select>
+                </div>
+                <div>
+                    操作人
+                    <select id="record-operator-filter" onchange="displayRecords()">
+                        <option value="">全部操作人</option>
+                    </select>
+                </div>
+            </div>
+            <div class="table-container">
+                <table id="record-list">
+                    <thead>
+                        <tr>
+                            <th style="width: 120px;">日期</th>
+                            <th style="width: 80px;">品名</th>
+                            <th style="width: 50px;">操作</th>
+                            <th style="width: 50px;">库位</th>
+                            <th style="width: 30px;">数量</th>
+                            <th style="width: 50px;">规格</th>
+                            <th style="width: 60px;">总数</th>
+                            <th style="width: 80px;">批次号</th>
+                            <th style="width: 70px;">过期日期</th>
+                            <th style="width: 60px;">原因</th>
+                            <th style="width: 40px;">操作人</th>
+                            <th style="width: 50px;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="record-list-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 库存页面模块，显示当前库存状态和管理功能 -->
+        <div id="stock" class="tab-content" style="display: none;">
+            <h2>库存页面</h2>
+            <div class="filter-container">
+                <label for="stock-category-filter">按类别筛选:</label>
+                <select id="stock-category-filter" onchange="displayStockList()">
+                    <option value="">所有类别</option>
+                </select>
+            </div>
+            <!-- 库存导出按钮，支持导出库存数据到Excel -->
+            <button onclick="exportStockToExcel()">导出库存</button>
+            <!-- 添加导出所有商户库存的按钮 -->
+            <button onclick="exportAllMerchantsStockToExcel()">导出所有商户库存</button>
+            <!-- 批量上传Excel修改每日消耗按钮 -->
+            <button onclick="uploadDailyConsumptionExcel()">批量上传每日消耗</button>
+            <!-- 切换断货风险计算逻辑按钮 -->
+            <button id="toggle-stockout-calculation" onclick="toggleStockoutCalculation()">切换断货风险计算（当前：深圳+香港）</button>
+            <!-- 库存信息显示表格，包含详细的库存状态信息 -->
+            <div class="table-container">
+                <table id="stock-list">
+                    <thead>
+                        <tr>
+                            <th onclick="sortStockList('product_id')" style="cursor: pointer;">产品编号 <span id="sort-product_id"></span></th>
+                            <th>品名</th>
+                            <th>产品单位</th>
+                            <th>在途数量</th>
+                            <th>深圳库存</th>
+                            <th>香港库存</th>
+                            <th>每日消耗</th>
+                            <th onclick="sortStockList('stockout_date')" style="cursor: pointer;">断货日期 <span id="sort-stockout_date"></span></th>
+                            <th>断货风险</th>
+                            <th onclick="sortStockList('expiry_risk')" style="cursor: pointer;">报废风险 <span id="sort-expiry_risk"></span></th>
+                            <th>规格</th>
+                        </tr>
+                    </thead>
+                    <tbody id="stock-list-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 商户管理模块，支持查看和添加商户 -->
+        <div id="merchant" class="tab-content" style="display: none;">
+            <h2>商户管理</h2>
+            <!-- 新增商户表单 -->
+            <div class="form-layout">
+                <div>
+                    <label for="new-merchant-name">商户名称:</label>
+                    <input type="text" id="new-merchant-name" required>
+                </div>
+                <div class="form-button-container">
+                    <button onclick="addMerchant()">新增商户</button>
+                </div>
+            </div>
+
+            <!-- 商户列表 -->
+            <h3>商户列表</h3>
+            <div class="table-container">
+                <table id="merchant-list">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>商户名称</th>
+                            <th>创建时间</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="merchant-list-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 用户管理模块，支持用户的添加、编辑和权限管理 -->
+        <div id="user" class="tab-content" style="display: none;">
+            <h2>用户管理</h2>
+            <!-- 新增用户表单 -->
+            <div class="form-layout">
+                <div>
+                    <label for="new-user-username">用户名:</label>
+                    <input type="text" id="new-user-username" required>
+                </div>
+                <div>
+                    <label for="new-user-password">密码:</label>
+                    <input type="password" id="new-user-password" required>
+                </div>
+                <div>
+                    <label for="new-user-is-admin">管理员:</label>
+                    <input type="checkbox" id="new-user-is-admin">
+                </div>
+                <div>
+                    <label>权限:</label>
+                    <div id="new-user-permissions" class="permissions-container">
+                        <!-- 权限复选框将通过JavaScript动态加载 -->
+                    </div>
+                </div>
+                <div class="form-button-container">
+                    <button onclick="addUser()">新增用户</button>
+                </div>
+            </div>
+
+            <!-- 用户列表 -->
+            <h3>用户列表</h3>
+            <div class="table-container">
+                <table id="user-list">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>用户名</th>
+                            <th>管理员</th>
+                            <th>最后登录时间</th>
+                            <th>权限</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="user-list-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 用户权限编辑模态框 -->
+        <div id="edit-permissions-modal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="document.getElementById('edit-permissions-modal').style.display='none'">&times;</span>
+                <h3>编辑用户权限</h3>
+                <div class="form-layout">
+                    <div>
+                        <label for="edit-user-is-admin">管理员:</label>
+                        <input type="checkbox" id="edit-user-is-admin">
+                    </div>
+                    <div>
+                        <label>权限:</label>
+                        <div id="edit-user-permissions" class="permissions-container">
+                            <!-- 权限复选框将通过JavaScript动态加载 -->
+                        </div>
+                    </div>
+                    <input type="hidden" id="edit-user-id">
+                    <div class="form-button-container">
+                        <button onclick="updateUserPermissions()">保存</button>
+                        <button onclick="document.getElementById('edit-permissions-modal').style.display='none'">取消</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 库位查询模块，显示根据库位选择的商品信息 -->
+        <div id="location-query" class="tab-content" style="display: none;">
+            <h2>库位查询</h2>
+            <!-- 添加商户筛选选项 -->
+            <div class="merchant-filter" style="margin-bottom: 10px;">
+                <label>查询范围:</label>
+                <input type="radio" id="current-merchant" name="merchant-scope" value="current" checked onchange="loadLocations()">
+                <label for="current-merchant">当前商户</label>
+                <input type="radio" id="all-merchants" name="merchant-scope" value="all" onchange="loadLocations()">
+                <label for="all-merchants">所有商户</label>
+            </div>
+            <div>
+                <label for="location-select">选择库位:</label>
+                <select id="location-select" onchange="fetchProductsByLocation()">
+                    <option value="">请选择库位</option>
+                    <!-- 库位选项将通过JavaScript填充 -->
+                </select>
+            </div>
+            <div class="table-container">
+                <table id="location-products-table">
+                    <thead>
+                        <tr>
+                            <th>产品编号</th>
+                            <th>品名</th>
+                            <th>商户</th>
+                            <th>规格</th>
+                            <th>数量</th>
+                            <th>过期日期</th>
+                            <th>批次号</th>
+                        </tr>
+                    </thead>
+                    <tbody id="location-products-body"></tbody>
+                </table>
+            </div>
+        </div>
+
 
     </div>
 </body>
 </html>
+
+<!-- 记录修改模态框 -->
+<div id="edit-record-modal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="document.getElementById('edit-record-modal').style.display='none'">&times;</span>
+        <h3>修改记录</h3>
+        <div class="form-layout">
+            <div>
+                <label for="edit-record-product">产品:</label>
+                <input type="text" id="edit-record-product" disabled>
+            </div>
+            <div>
+                <label for="edit-record-operation">操作类型:</label>
+                <input type="text" id="edit-record-operation" disabled>
+            </div>
+            <div>
+                <label for="edit-record-quantity">数量:</label>
+                <input type="number" id="edit-record-quantity" min="1">
+            </div>
+            <div>
+                <label for="edit-record-box-spec">规格:</label>
+                <input type="number" id="edit-record-box-spec" min="1">
+            </div>
+            <div>
+                <label for="edit-record-reason">原因:</label>
+                <input type="text" id="edit-record-reason">
+            </div>
+            <div>
+                <label for="edit-record-batch-number">批次号:</label>
+                <input type="text" id="edit-record-batch-number">
+            </div>
+            <div>
+                <label for="edit-record-expiry-date">过期日期:</label>
+                <input type="date" id="edit-record-expiry-date">
+            </div>
+            <input type="hidden" id="edit-record-id">
+            <div class="form-button-container">
+                <button onclick="updateRecord()">保存</button>
+                <button onclick="document.getElementById('edit-record-modal').style.display='none'">取消</button>
+            </div>
+        </div>
+    </div>
+</div>

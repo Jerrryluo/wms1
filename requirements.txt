@@ -1,2 +1,5 @@
 flask
 flask-sqlalchemy
+PyYAML
+openpyxl
+flask-login

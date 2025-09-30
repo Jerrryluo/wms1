@@ -1,35 +1,204 @@
+<!-- 登录页面HTML文档，设置中文语言和UTF-8编码，确保正确显示中文字符 -->
 <!DOCTYPE html>
 <html lang="zh">
 <head>
+    <!-- 页面元数据设置，包括字符编码、视口配置和页面标题 -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>登录 - 仓库管理系统</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <style>
+        /* 全局样式重置和基础设置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        }
+
+        /* 背景样式设计 */
+        body {
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #ffffff; /* 修改背景为纯白色 */
+        }
+
+        /* 登录容器样式，添加毛玻璃效果 */
+        .login-container {
+            width: 100%;
+            max-width: 420px;
+            padding: 20px;
+        }
+
+        /* 登录框样式，使用新拟态设计 */
+        .login-box {
+            background: #ffffff;
+            padding: 40px;
+            border-radius: 24px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .login-box:hover {
+            transform: translateY(-5px);
+        }
+
+        /* 标题样式 */
+        h2 {
+            color: #1a1a1a;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 28px;
+            font-weight: 600;
+        }
+
+        /* 表单组样式 */
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        /* 标签样式 */
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #4a5568;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        /* 输入框样式 */
+        input {
+            width: 100%;
+            height: 48px;
+            padding: 0 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            background: #ffffff;
+            line-height: 48px;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        /* 密码输入容器样式 */
+        .password-input-container {
+            position: relative;
+        }
+
+        /* 密码显示切换按钮样式 */
+        .toggle-password {
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 20px;
+            color: #4a5568;
+            transition: color 0.3s ease;
+        }
+
+        .toggle-password:hover {
+            color: #667eea;
+        }
+
+        /* 登录按钮样式 */
+        .login-button {
+            width: 100%;
+            height: 48px;
+            background: linear-gradient(135deg, #FFFF00 0%, #FFD700 100%);
+            color: #333;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .login-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+        }
+
+        .login-button:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* 错误消息样式 */
+        .error-message {
+            background: #fff5f5;
+            color: #e53e3e;
+            padding: 12px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            text-align: center;
+            animation: fadeIn 0.3s ease;
+        }
+
+        /* 动画关键帧 */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 480px) {
+            .login-container {
+                padding: 10px;
+            }
+            
+            .login-box {
+                padding: 30px 20px;
+            }
+        }
+    </style>
 </head>
 <body>
+    <!-- 登录页面主容器，采用弹性布局实现居中对齐 -->
     <div class="login-container">
+        <!-- 登录框容器，包含标题、错误消息显示区和登录表单 -->
         <div class="login-box">
             <h2>仓库管理系统</h2>
+            <!-- 错误消息显示区域，默认隐藏，通过JavaScript控制显示 -->
             <div id="login-error" class="error-message" style="display: none;"></div>
+            <!-- 登录表单，提交时触发handleLogin事件处理函数 -->
             <form id="loginForm" onsubmit="return handleLogin(event)">
+                <!-- 用户名输入组，包含标签和输入框，支持浏览器自动完成 -->
                 <div class="form-group">
                     <label for="username">用户名:</label>
                     <input type="text" id="username" name="username" required autocomplete="username">
                 </div>
+                <!-- 密码输入组，包含标签、输入框和密码显示切换按钮 -->
                 <div class="form-group">
                     <label for="password">密码:</label>
                     <div class="password-input-container">
                         <input type="password" id="password" name="password" required autocomplete="current-password">
+                        <!-- 密码显示切换按钮，点击时调用togglePasswordVisibility函数 -->
                         <button type="button" class="toggle-password" onclick="togglePasswordVisibility()">
                             👁
                         </button>
                     </div>
                 </div>
+                <!-- 登录按钮，提交表单触发登录流程 -->
                 <button type="submit" class="login-button">登录</button>
             </form>
         </div>
     </div>
+
+    <!-- 页面脚本，包含登录相关的交互功能实现 -->
     <script>
+        // 密码显示切换函数，在明文和密文之间切换，同时更新按钮图标
         function togglePasswordVisibility() {
             const passwordInput = document.getElementById('password');
             const toggleButton = document.querySelector('.toggle-password');
@@ -43,6 +212,7 @@
             }
         }
 
+        // 错误消息显示函数，显示3秒后自动隐藏，提供用户反馈
         function showError(message) {
             const errorDiv = document.getElementById('login-error');
             errorDiv.textContent = message;
@@ -52,15 +222,18 @@
             }, 3000);
         }
 
+        // 登录处理函数，发送登录请求并处理响应，包含加载状态和错误处理
         function handleLogin(event) {
             event.preventDefault();
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
             const submitButton = document.querySelector('button[type="submit"]');
 
+            // 设置按钮加载状态，防止重复提交
             submitButton.disabled = true;
             submitButton.textContent = '登录中...';
 
+            // 发送登录请求到后端，使用fetch API进行异步通信
             fetch('/login', {
                 method: 'POST',
                 headers: {
@@ -74,9 +247,9 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    window.location.href = '/';
+                    window.location.href = '/';  // 登录成功跳转到首页
                 } else {
-                    showError(data.message);
+                    showError(data.message);  // 显示登录失败消息
                 }
             })
             .catch(error => {
@@ -84,6 +257,7 @@
                 showError('登录失败，请重试');
             })
             .finally(() => {
+                // 恢复按钮状态
                 submitButton.disabled = false;
                 submitButton.textContent = '登录';
             });
