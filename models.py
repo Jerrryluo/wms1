@@ -23,35 +23,51 @@ class Product(db.Model):
     category = db.Column(db.String(50))
     supplier = db.Column(db.String(100))
     unit = db.Column(db.String(10))
-    merchant_id = db.Column(db.Integer, db.ForeignKey('merchant.id'), nullable=False)
+    merchant_id = db.Column(db.Integer, db.ForeignKey('merchant.id'), nullable=False, index=True)
+
+    __table_args__ = (
+        db.Index('idx_product_merchant', 'merchant_id'),
+    )
 
 
 class Stock(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    product_id = db.Column(db.String(20), db.ForeignKey('product.id'))
+    product_id = db.Column(db.String(20), db.ForeignKey('product.id'), index=True)
     box_spec = db.Column(db.String(50))
-    quantity = db.Column(db.Integer)
-    expiry_date = db.Column(db.Date)
-    batch_number = db.Column(db.String(50))
+    quantity = db.Column(db.Integer, index=True)
+    expiry_date = db.Column(db.Date, index=True)
+    batch_number = db.Column(db.String(50), index=True)
     in_transit = db.Column(db.Integer)
     daily_consumption = db.Column(db.Float)
-    location = db.Column(db.String(20))
-    merchant_id = db.Column(db.Integer, db.ForeignKey('merchant.id'), nullable=False)
+    location = db.Column(db.String(20), index=True)
+    merchant_id = db.Column(db.Integer, db.ForeignKey('merchant.id'), nullable=False, index=True)
     unit_price = db.Column(db.Float)
     shenzhen_stock = db.Column(db.Integer, default=0)
+
+    __table_args__ = (
+        db.Index('idx_stock_product_merchant', 'product_id', 'merchant_id'),
+        db.Index('idx_stock_location_batch', 'location', 'batch_number'),
+        db.Index('idx_stock_expiry_quantity', 'expiry_date', 'quantity'),
+    )
 
 
 class Record(db.Model):
     id = db.Column(db.String(20), primary_key=True)
-    product_id = db.Column(db.String(20))
-    operation_type = db.Column(db.String(10))
+    product_id = db.Column(db.String(20), index=True)
+    operation_type = db.Column(db.String(10), index=True)
     quantity = db.Column(db.Integer)
-    date = db.Column(db.DateTime, default=datetime.now)
+    date = db.Column(db.DateTime, default=datetime.now, index=True)
     additional_info = db.Column(db.String(200))
-    merchant_id = db.Column(db.Integer, db.ForeignKey('merchant.id'), nullable=False)
-    operator_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    merchant_id = db.Column(db.Integer, db.ForeignKey('merchant.id'), nullable=False, index=True)
+    operator_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True, index=True)
 
     operator = db.relationship('User', backref='records', lazy=True)
+
+    __table_args__ = (
+        db.Index('idx_record_date_merchant', 'date', 'merchant_id'),
+        db.Index('idx_record_product_operation', 'product_id', 'operation_type'),
+        db.Index('idx_record_recent_duplicates', 'product_id', 'operation_type', 'quantity', 'date'),
+    )
 
 
 class ShenzhenRecord(db.Model):
