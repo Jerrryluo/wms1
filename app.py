@@ -119,23 +119,45 @@ def ensure_admin_password_compat():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        data = request.json
-        user = User.query.filter_by(username=data.get('username')).first()
+        # 兼容 JSON 与表单提交
+        data = request.get_json(silent=True) or request.form
+        username = (data.get('username') or '').strip()
+        password = data.get('password') or ''
+        user = User.query.filter_by(username=username).first()
 
-        if user and user.check_password(data.get('password')):
-            login_user(user)
-            
-            user.last_login = datetime.now()
-            # 记录登录时间，用于强制登出计算
-            session['login_time'] = datetime.now().isoformat()
-            session['last_activity'] = datetime.now().isoformat()
-            db.session.commit()
-            
-            # 检查当前商户今天是否已保存Excel文件
-            if user.current_merchant_id:
-                check_and_export_excel(user.current_merchant_id)
-            
-            return jsonify({'success': True, 'message': '登录成功'})
+        try:
+            if user and user.check_password(password):
+                login_user(user)
+                
+                user.last_login = datetime.now()
+                # 记录登录时间，用于强制登出计算
+                session['login_time'] = datetime.now().isoformat()
+                session['last_activity'] = datetime.now().isoformat()
+                db.session.commit()
+                
+                # 检查当前商户今天是否已保存Excel文件
+                if user.current_merchant_id:
+                    check_and_export_excel(user.current_merchant_id)
+                
+                return jsonify({'success': True, 'message': '登录成功'})
+        except Exception as e:
+            # 遇到不支持的哈希算法（如 scrypt）时，尝试仅对管理员做兼容迁移
+            try:
+                print(f"登录校验异常: {e}. 用户: {username}")
+                if user and user.username == DEFAULT_USERNAME:
+                    ensure_admin_password_compat()
+                    db.session.refresh(user)
+                    if user.check_password(password):
+                        login_user(user)
+                        user.last_login = datetime.now()
+                        session['login_time'] = datetime.now().isoformat()
+                        session['last_activity'] = datetime.now().isoformat()
+                        db.session.commit()
+                        if user.current_merchant_id:
+                            check_and_export_excel(user.current_merchant_id)
+                        return jsonify({'success': True, 'message': '登录成功'})
+            except Exception as inner_e:
+                print(f"管理员密码兼容迁移失败: {inner_e}")
 
         return jsonify({'success': False, 'message': '用户名或密码错误'}), 401
 
@@ -208,6 +230,40 @@ def user_management():
 @login_required
 def merchant_management():
     return render_template('merchants.html')
+
+# 调试接口：检查数据库连接与关键数据是否存在（公开读）
+@app.route('/api/debug/db', methods=['GET'])
+def debug_db_state():
+    try:
+        users_count = User.query.count()
+        has_admin = User.query.filter_by(username=DEFAULT_USERNAME).first() is not None
+        merchants_count = Merchant.query.count()
+        permissions_count = Permission.query.count()
+        return jsonify({
+            'ok': True,
+            'users_count': users_count,
+            'has_admin': has_admin,
+            'merchants_count': merchants_count,
+            'permissions_count': permissions_count
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+# 调试接口：查看指定用户是否存在及密码哈希前缀（公开读）
+@app.route('/api/debug/user/<username>', methods=['GET'])
+def debug_user(username):
+    try:
+        user = User.query.filter_by(username=username).first()
+        if not user:
+            return jsonify({'exists': False})
+        prefix = None
+        try:
+            prefix = (user.password_hash or '').split(':')[0]
+        except Exception:
+            prefix = None
+        return jsonify({'exists': True, 'hash_prefix': prefix, 'is_admin': user.is_admin})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
 
 # 直接库存移位：不记录到出入库记录，仅调整库存行位置与数量
 @app.route('/api/stock/relocate', methods=['POST'])
@@ -2091,13 +2147,24 @@ def get_shenzhen_records():
         })
     return jsonify(records)
 
-if __name__ == '__main__':
+# 初始化数据库和默认数据（适配Vercel部署）
+def init_app():
     with app.app_context():
-        # 创建数据库表并初始化默认数据
-        db.create_all()
-        seed_defaults()
-        # 运行一次管理员密码兼容处理（Flask 3移除before_first_request）
-        ensure_admin_password_compat_seed()
+        try:
+            # 创建数据库表并初始化默认数据
+            db.create_all()
+            seed_defaults()
+            # 运行一次管理员密码兼容处理（Flask 3移除before_first_request）
+            ensure_admin_password_compat_seed()
+        except Exception as e:
+            print(f"数据库初始化错误: {e}")
 
+# 在Vercel环境中自动初始化
+if os.environ.get('VERCEL'):
+    init_app()
+
+if __name__ == '__main__':
+    # 本地开发环境
+    init_app()
     # 启动应用，支持通过环境变量 PORT 指定端口
     app.run(debug=True, port=int(os.environ.get('PORT', 5000)))
