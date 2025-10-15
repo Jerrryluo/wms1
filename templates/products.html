@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}产品管理 - 仓库管理系统{% endblock %}
+
+{% block content %}
+<h2>产品管理</h2>
+
+<!-- 新增产品表单区域 -->
+<div>
+    <h3>新增产品</h3>
+    <div class="form-layout">
+        <div>
+            <label for="new-product-id">产品编号:</label>
+            <input type="text" id="new-product-id" placeholder=""商家缩写英文+数字"格式录入" required>
+        </div>
+        <div>
+            <label for="new-product-name">品名:</label>
+            <input type="text" id="new-product-name" placeholder=""商家+产品名"格式录入" required>
+        </div>
+        <div>
+            <label for="new-product-category">产品类别:</label>
+            <select id="new-product-category" required>
+                <option value="">请选择类别</option>
+                <option value="补剂">补剂</option>
+                <option value="包装用耗材">包装用耗材</option>
+                <option value="生产用耗材">生产用耗材</option>
+            </select>
+        </div>
+        <div>
+            <label for="new-product-supplier">供应商:</label>
+            <input type="text" id="new-product-supplier" required>
+        </div>
+        <div class="form-button-container">
+            <button onclick="addProduct()">新增</button>
+        </div>
+    </div>
+</div>
+
+<!-- 产品列表显示区域 -->
+<div>
+    <h3>产品清单</h3>
+    <!-- 排序按钮组 -->
+    <button onclick="sortProductList('id')">按产品编号排序</button>
+    <button onclick="sortProductList('name')">按品名排序</button>
+    <button onclick="sortProductList('category')">按产品类别排序</button>
+    <button onclick="sortProductList('supplier')">按供应商排序</button>
+    
+    <!-- 产品列表表格 -->
+    <div class="table-container">
+        <table id="product-list">
+            <thead>
+                <tr>
+                    <th>产品编号</th>
+                    <th>品名</th>
+                    <th>产品类别</th>
+                    <th>供应商</th>
+                    <th class="actions-column">操作</th>
+                </tr>
+            </thead>
+            <tbody id="product-list-body"></tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // 页面初始化函数
+    function pageInit() {
+        displayProductList();
+    }
+</script>
+{% endblock %}

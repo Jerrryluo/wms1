@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}出入库记录 - 仓库管理系统{% endblock %}
+
+{% block content %}
+<h2>出入库记录</h2>
+
+<!-- 按钮组 -->
+<div class="records-action-buttons">
+    <button onclick="resetRecordFilters()">重置筛选</button>
+    <button id="export-records-btn" onclick="exportRecordsToExcel()">导出记录</button>
+</div>
+
+<!-- 记录查询和过滤功能区域 -->
+<div class="records-filter-actions">
+    <div>
+        日期范围
+        <div class="date-range-container">
+            <input type="date" id="record-start-date-filter" placeholder="起始日" onchange="displayRecords()">
+            <span>至</span>
+            <input type="date" id="record-end-date-filter" placeholder="结束日" onchange="displayRecords()">
+        </div>
+    </div>
+    <div>
+        品名
+        <select id="record-product-filter" onchange="displayRecords()">
+            <option value="">全部产品</option>
+        </select>
+    </div>
+    <div>
+        操作类型
+        <select id="record-operation-filter" onchange="displayRecords()">
+            <option value="">全部类型</option>
+            <option value="入库">入库</option>
+            <option value="出库">出库</option>
+        </select>
+    </div>
+    <div>
+        库位
+        <select id="record-location-filter" onchange="displayRecords()">
+            <option value="">全部库位</option>
+        </select>
+    </div>
+    <div>
+        操作原因
+        <select id="record-reason-filter" onchange="displayRecords()">
+        </select>
+    </div>
+    <div>
+        操作人
+        <select id="record-operator-filter" onchange="displayRecords()">
+            <option value="">全部操作人</option>
+        </select>
+    </div>
+</div>
+
+<div class="table-container">
+    <table id="record-list">
+        <thead>
+            <tr>
+                <th style="width: 120px;">日期</th>
+                <th style="width: 80px;">品名</th>
+                <th style="width: 50px;">操作</th>
+                <th style="width: 50px;">库位</th>
+                <th style="width: 30px;">数量</th>
+                <th style="width: 50px;">规格</th>
+                <th style="width: 60px;">总数</th>
+                <th style="width: 80px;">批次号</th>
+                <th style="width: 70px;">过期日期</th>
+                <th style="width: 60px;">原因</th>
+                <th style="width: 40px;">操作人</th>
+                <th style="width: 50px;">操作</th>
+            </tr>
+        </thead>
+        <tbody id="record-list-body"></tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // 页面初始化函数
+    function pageInit() {
+        displayRecords(); // 加载记录列表
+        populateRecordFilters(); // 加载筛选选项
+    }
+</script>
+{% endblock %}

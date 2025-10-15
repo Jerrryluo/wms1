@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+
+{% block title %}库存页面 - 仓库管理系统{% endblock %}
+
+{% block content %}
+<h2>库存页面</h2>
+
+<div class="filter-container">
+    <label for="stock-category-filter">按类别筛选:</label>
+    <select id="stock-category-filter" onchange="displayStockList()">
+        <option value="">所有类别</option>
+    </select>
+</div>
+
+<!-- 库存导出按钮 -->
+<button onclick="exportStockToExcel()">导出库存</button>
+<button onclick="exportAllMerchantsStockToExcel()">导出所有商户库存</button>
+<button onclick="uploadDailyConsumptionExcel()">批量上传每日消耗</button>
+<button id="toggle-stockout-calculation" onclick="toggleStockoutCalculation()">切换断货风险计算（当前：深圳+香港）</button>
+
+<!-- 库存信息显示表格 -->
+<div class="table-container">
+    <table id="stock-list">
+        <thead>
+            <tr>
+                <th onclick="sortStockList('product_id')" style="cursor: pointer;">产品编号 <span id="sort-product_id"></span></th>
+                <th>品名</th>
+                <th>在途数量</th>
+                <th>深圳库存</th>
+                <th>香港库存</th>
+                <th>每日消耗</th>
+                <th onclick="sortStockList('stockout_date')" style="cursor: pointer;">断货日期 <span id="sort-stockout_date"></span></th>
+                <th>断货风险</th>
+                <th onclick="sortStockList('expiry_risk')" style="cursor: pointer;">报废风险 <span id="sort-expiry_risk"></span></th>
+                <th>规格</th>
+            </tr>
+        </thead>
+        <tbody id="stock-list-body"></tbody>
+    </table>
+</div>
+
+<!-- 深圳仓管理模态框 -->
+<div id="shenzhen-modal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 900px;">
+        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;">
+            <h3 id="shenzhen-modal-title">深圳仓管理</h3>
+            <button class="small-button" onclick="closeShenzhenModal()">关闭</button>
+        </div>
+
+        <!-- 入库表单 -->
+        <div class="form-layout" style="margin-top: 10px;">
+            <div>
+                <label for="sz-incoming-box-spec">产品规格:</label>
+                <input type="text" id="sz-incoming-box-spec" placeholder="如 255" required>
+            </div>
+            <div>
+                <label for="sz-incoming-quantity">数量(箱):</label>
+                <input type="number" id="sz-incoming-quantity" min="1" required>
+            </div>
+            <div>
+                <label for="sz-incoming-expiry-date">过期日期:</label>
+                <input type="date" id="sz-incoming-expiry-date" required>
+            </div>
+            <div>
+                <label for="sz-incoming-batch-number">批次号:</label>
+                <input type="text" id="sz-incoming-batch-number" required>
+            </div>
+            <div class="form-button-container">
+                <button onclick="submitShenzhenInbound()">深圳入库</button>
+            </div>
+        </div>
+
+        <!-- 深圳当前库存 -->
+        <h4 style="margin-top: 18px;">深圳当前库存</h4>
+        <!-- 目的库位选择 -->
+        <div class="form-layout" style="margin: 8px 0 12px 0;">
+            <div>
+                <label for="sz-dest-location">目的库位:</label>
+                <select id="sz-dest-location" required>
+                    <option value="">请选择库位</option>
+                    <option value="A1">A1</option>
+                    <option value="A2">A2</option>
+                    <option value="A3">A3</option>
+                    <option value="A4">A4</option>
+                    <option value="A5">A5</option>
+                    <option value="A6">A6</option>
+                    <option value="A7">A7</option>
+                    <option value="A8">A8</option>
+                    <option value="A12">A12</option>
+                    <option value="A13">A13</option>
+                    <option value="A14">A14</option>
+                    <option value="A15">A15</option>
+                    <option value="A16">A16</option>
+                    <option value="A17">A17</option>
+                    <option value="A18">A18</option>
+                    <option value="A19">A19</option>
+                    <option value="A20">A20</option>
+                    <option value="A21">A21</option>
+                    <option value="A22">A22</option>
+                    <option value="A23">A23</option>
+                    <option value="B1">B1</option>
+                    <option value="B2">B2</option>
+                    <option value="B3">B3</option>
+                    <option value="B4">B4</option>
+                    <option value="B5">B5</option>
+                    <option value="B6">B6</option>
+                    <option value="B7">B7</option>
+                    <option value="B8">B8</option>
+                    <option value="B9">B9</option>
+                    <option value="B10">B10</option>
+                    <option value="B11">B11</option>
+                    <option value="B12">B12</option>
+                    <option value="B13">B13</option>
+                    <option value="B15">B15</option>
+                    <option value="C1">C1</option>
+                    <option value="O301">O301</option>
+                    <option value="O302">O302</option>
+                    <option value="O303">O303</option>
+                    <option value="O401">O401</option>
+                    <option value="O402">O402</option>
+                    <option value="O403">O403</option>
+                </select>
+            </div>
+        </div>
+        <div class="table-container">
+            <table id="sz-stock-table">
+                <thead>
+                    <tr>
+                        <th>规格</th>
+                        <th>数量(箱)</th>
+                        <th>批次号</th>
+                        <th>过期日期</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="sz-stock-body"></tbody>
+            </table>
+        </div>
+
+        <!-- 深圳出入库记录 -->
+        <h4 style="margin-top: 18px;">深圳出入库记录</h4>
+        <div class="table-container">
+            <table id="sz-records-table">
+                <thead>
+                    <tr>
+                        <th style="width: 180px;">日期</th>
+                        <th style="width: 80px;">操作类型</th>
+                        <th>规格</th>
+                        <th>数量(箱)</th>
+                        <th>批次号</th>
+                        <th>过期日期</th>
+                        <th>操作人</th>
+                    </tr>
+                </thead>
+                <tbody id="sz-records-body"></tbody>
+            </table>
+        </div>
+    </div>
+    <!-- 保存当前产品ID到模态框的dataset中 -->
+</div>
+
+<!-- 深圳调拨确认弹窗 -->
+<div id="shenzhen-transfer-confirm-modal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 500px;">
+        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;">
+            <h3>确认调拨</h3>
+            <button class="small-button" onclick="closeShenzhenTransferConfirm()">关闭</button>
+        </div>
+        <div style="margin-top: 10px;">
+            <p>产品：<span id="sz-confirm-product"></span></p>
+            <p>规格：<span id="sz-confirm-spec"></span></p>
+            <p>数量(箱)：<span id="sz-confirm-qty"></span></p>
+            <p>目的库位：<span id="sz-confirm-location"></span></p>
+        </div>
+        <div class="form-button-container" style="margin-top: 12px;">
+            <button onclick="confirmTransferFromShenzhen()">确认调拨</button>
+            <button class="small-button" onclick="closeShenzhenTransferConfirm()">取消</button>
+        </div>
+    </div>
+</div>
+
+<!-- 库位移位模态框 -->
+<div id="relocate-modal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 600px;">
+        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;">
+            <h3>库存移位</h3>
+            <button class="small-button" onclick="closeRelocateModal()">关闭</button>
+        </div>
+        <div style="margin-top: 10px;">
+            <p>产品：<span id="relocate-product"></span></p>
+            <p>规格：<span id="relocate-spec"></span></p>
+            <p>原库位：<span id="relocate-from-location"></span></p>
+            <p>可移位箱数：<span id="relocate-available"></span></p>
+        </div>
+        <div class="form-layout" style="margin-top: 12px;">
+            <div>
+                <label for="relocate-to-location">目标库位:</label>
+                <select id="relocate-to-location" required>
+                    <option value="">请选择库位</option>
+                    <option value="A1">A1</option>
+                    <option value="A2">A2</option>
+                    <option value="A3">A3</option>
+                    <option value="A4">A4</option>
+                    <option value="A5">A5</option>
+                    <option value="A6">A6</option>
+                    <option value="A7">A7</option>
+                    <option value="A8">A8</option>
+                    <option value="A12">A12</option>
+                    <option value="A13">A13</option>
+                    <option value="A14">A14</option>
+                    <option value="A15">A15</option>
+                    <option value="A16">A16</option>
+                    <option value="A17">A17</option>
+                    <option value="A18">A18</option>
+                    <option value="A19">A19</option>
+                    <option value="A20">A20</option>
+                    <option value="A21">A21</option>
+                    <option value="A22">A22</option>
+                    <option value="A23">A23</option>
+                    <option value="B1">B1</option>
+                    <option value="B2">B2</option>
+                    <option value="B3">B3</option>
+                    <option value="B4">B4</option>
+                    <option value="B5">B5</option>
+                    <option value="B6">B6</option>
+                    <option value="B7">B7</option>
+                    <option value="B8">B8</option>
+                    <option value="B9">B9</option>
+                    <option value="B10">B10</option>
+                    <option value="B11">B11</option>
+                    <option value="B12">B12</option>
+                    <option value="B13">B13</option>
+                    <option value="B15">B15</option>
+                    <option value="C1">C1</option>
+                    <option value="O301">O301</option>
+                    <option value="O302">O302</option>
+                    <option value="O303">O303</option>
+                    <option value="O401">O401</option>
+                    <option value="O402">O402</option>
+                    <option value="O403">O403</option>
+                    <option value="10F">10F</option>
+                </select>
+            </div>
+            <div>
+                <label for="relocate-quantity">移位数量(箱):</label>
+                <input type="number" id="relocate-quantity" min="1" required>
+            </div>
+        </div>
+        <div class="form-button-container" style="margin-top: 12px;">
+            <button onclick="confirmRelocate()">确认移位</button>
+            <button class="small-button" onclick="closeRelocateModal()">取消</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // 页面初始化函数
+    function pageInit() {
+        displayStockList(); // 加载库存列表
+        populateStockFilters(); // 加载筛选选项
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}库位查询 - 仓库管理系统{% endblock %}
+
+{% block content %}
+<h2>库位查询</h2>
+
+<!-- 添加商户筛选选项 -->
+<div class="merchant-filter" style="margin-bottom: 10px;">
+    <label>查询范围:</label>
+    <input type="radio" id="current-merchant" name="merchant-scope" value="current" checked onchange="loadLocations()">
+    <label for="current-merchant">当前商户</label>
+    <input type="radio" id="all-merchants" name="merchant-scope" value="all" onchange="loadLocations()">
+    <label for="all-merchants">所有商户</label>
+</div>
+
+<div class="form-layout">
+    <div>
+        <label for="location-select">选择库位:</label>
+        <select id="location-select" onchange="fetchProductsByLocation()">
+            <option value="">请选择库位</option>
+            <!-- 库位选项将通过JavaScript填充 -->
+        </select>
+    </div>
+</div>
+
+<div class="table-container">
+    <table id="location-products-table">
+        <thead>
+            <tr>
+                <th>产品编号</th>
+                <th>品名</th>
+                <th>商户</th>
+                <th>规格</th>
+                <th>数量</th>
+                <th>批次号</th>
+                <th>过期日期</th>
+            </tr>
+        </thead>
+        <tbody id="location-products-body"></tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // 页面初始化函数
+    function pageInit() {
+        // 库位查询页面初始化
+        loadLocations();
+    }
+</script>
+{% endblock %}

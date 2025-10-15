@@ -3,3 +3,4 @@ flask-sqlalchemy
 PyYAML
 openpyxl
 flask-login
+psycopg2-binary

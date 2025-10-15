@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% block title %}仪表盘{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+  <div class="dashboard-header">
+    <img src="{{ url_for('static', filename='images/lemon.png') }}" alt="Logo" class="dashboard-logo">
+    <h2>仪表盘</h2>
+  </div>
+  <div class="dashboard-grid">
+    <!-- 拆分为三个独立卡片 -->
+    <div class="card" id="card-inv-supplement-stockout">
+      <h3>补剂断货提醒（≤90天）</h3>
+      <div class="metrics">
+        <ul id="inv-supplement-stockout-90"></ul>
+      </div>
+    </div>
+
+    <div class="card" id="card-inv-packaging-stockout">
+      <h3>包装用耗材断货提醒（≤35天）</h3>
+      <div class="metrics">
+        <ul id="inv-packaging-stockout-35"></ul>
+      </div>
+    </div>
+
+    <div class="card" id="card-inv-supplement-expiry">
+      <h3>补剂过期提醒（≤360天）</h3>
+      <div class="metrics">
+        <ul id="inv-supplement-expiry-360"></ul>
+      </div>
+    </div>
+
+    <!-- 交换卡片位置：先入库/出库，再产品表现 -->
+    <div class="card" id="card-flow">
+      <h3>入库/出库概览</h3>
+      <div class="metrics">
+        <div>今日入库：<span id="in-today">-</span>，本周：<span id="in-week">-</span>，本月：<span id="in-month">-</span></div>
+        <div>今日出库：<span id="out-today">-</span>，本周：<span id="out-week">-</span>，本月：<span id="out-month">-</span></div>
+      </div>
+    </div>
+
+    <div class="card" id="card-performance">
+      <h3>产品表现（近30天）</h3>
+      <div class="metrics two-cols">
+        <div>
+          <strong>畅销产品</strong>
+          <ul id="perf-best"></ul>
+        </div>
+        <div>
+          <strong>滞销产品</strong>
+          <ul id="perf-slow"></ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="card-location">
+      <h3>库位利用率</h3>
+      <div class="metrics">
+        <div>总库位：<span id="loc-total">-</span>，已占用：<span id="loc-occupied">-</span></div>
+        <div>利用率：<span id="loc-rate">-</span></div>
+      </div>
+    </div>
+
+    <div class="card" id="card-shenzhen">
+      <h3>深圳待调拨</h3>
+      <div class="metrics">
+        <div>待调拨总量（箱）：<span id="sz-pending-boxes">-</span></div>
+        <div>平均滞留天数：<span id="sz-avg-days">-</span></div>
+        <div>明细：</div>
+        <ul id="sz-items"></ul>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+{% endblock %}

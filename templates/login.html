@@ -247,6 +247,8 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
+                    // 设置标记，表示应该显示欢迎动画
+                    sessionStorage.setItem('showWelcomeAnimation', 'true');
                     window.location.href = '/';  // 登录成功跳转到首页
                 } else {
                     showError(data.message);  // 显示登录失败消息

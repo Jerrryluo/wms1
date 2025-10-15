@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}仓库管理系统{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/0.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.16.9/xlsx.full.min.js"></script>
+    <style>
+        body {
+            cursor: url("{{ url_for('static', filename='images/lemon_cursor.png') }}"), auto;
+        }
+
+        /* 用户信息区域样式 */
+        .user-info {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            z-index: 100;
+        }
+
+        .user-info .username {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .user-info button {
+            padding: 5px 10px;
+            background-color: #f0f0f0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .user-info button:hover {
+            background-color: #e0e0e0;
+        }
+
+        /* 当前页面导航高亮 */
+        .sidebar button.active {
+            background-color: #FFD700;
+            color: #333;
+            font-weight: bold;
+        }
+
+        /* 欢迎动画层样式：默认隐藏，仅首次登录显示 */
+        .welcome-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #FFFF00 0%, #FFD700 100%);
+            display: none; /* 默认隐藏，避免加载闪烁 */
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .welcome-content {
+            text-align: center;
+        }
+
+        .logo-animation {
+            font-size: 48px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 20px;
+            animation: logoScale 0.5s ease;
+        }
+
+        .loading-bar {
+            width: 200px;
+            height: 4px;
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 2px;
+            margin: 20px auto;
+            overflow: hidden;
+        }
+
+        .loading-progress {
+            width: 100%;
+            height: 100%;
+            background: #333;
+            animation: loading 0.5s ease-in-out;
+            transform-origin: left;
+        }
+
+        .welcome-text {
+            font-size: 18px;
+            color: #333;
+            margin-top: 10px;
+        }
+
+        @keyframes logoScale {
+            0% { transform: scale(0.8); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes loading {
+            0% { transform: scaleX(0); }
+            100% { transform: scaleX(1); }
+        }
+    </style>
+    {% block extra_head %}{% endblock %}
+    <script>
+        // 在页面渲染前标记欢迎模式，避免内容先闪现
+        (function() {
+            try {
+                if (sessionStorage.getItem('showWelcomeAnimation') === 'true') {
+                    document.documentElement.classList.add('welcome-mode');
+                }
+            } catch (e) {
+                // 忽略异常
+            }
+        })();
+    </script>
+</head>
+<body>
+    <!-- 欢迎动画层 -->
+    <div class="welcome-screen" id="welcomeScreen">
+        <div class="welcome-content">
+            <div class="logo-animation">LB WMS</div>
+            <div class="loading-bar">
+                <div class="loading-progress"></div>
+            </div>
+            <div class="welcome-text">欢迎使用仓库管理系统</div>
+        </div>
+    </div>
+
+    <!-- 用户信息区域 -->
+    <div class="user-info">
+        <span class="username" id="current-username">加载中...</span>
+        <button id="btn-user-management" data-url="{{ url_for('user_management') }}">用户管理</button>
+        <button onclick="logout()">退出登录</button>
+    </div>
+
+    <!-- 侧边导航栏 -->
+    <div class="sidebar">
+        <div class="logo-container">
+            <img src="{{ url_for('static', filename='images/lemon.png') }}" alt="柠檬" class="logo">
+        </div>
+
+        <!-- 商户选择下拉菜单 -->
+        <div class="merchant-selector">
+            <div class="current-merchant" id="current-merchant">
+                <span id="current-merchant-name">加载中...</span>
+                <span class="dropdown-icon">▼</span>
+            </div>
+            <div class="merchant-dropdown" id="merchant-dropdown">
+                <!-- 商户列表将通过JavaScript动态加载 -->
+            </div>
+        </div>
+
+        <!-- 功能模块导航按钮 -->
+        <button id="nav-dashboard" data-url="{{ url_for('dashboard_view') }}" 
+                {% if request.endpoint == 'dashboard_view' %}class="active"{% endif %}>仪表盘</button>
+        <button id="nav-product" data-url="{{ url_for('product_management') }}" 
+                {% if request.endpoint == 'product_management' %}class="active"{% endif %}>产品管理</button>
+        <button id="nav-incoming" data-url="{{ url_for('incoming_operation') }}" 
+                {% if request.endpoint == 'incoming_operation' %}class="active"{% endif %}>入库操作</button>
+        <button id="nav-outgoing" data-url="{{ url_for('outgoing_operation') }}" 
+                {% if request.endpoint == 'outgoing_operation' %}class="active"{% endif %}>出库操作</button>
+        <button id="nav-records" data-url="{{ url_for('records_view') }}" 
+                {% if request.endpoint == 'records_view' %}class="active"{% endif %}>出入库记录</button>
+        <button id="nav-stock" data-url="{{ url_for('stock_view') }}" 
+                {% if request.endpoint == 'stock_view' %}class="active"{% endif %}>库存页面</button>
+        <button id="nav-location" data-url="{{ url_for('location_query') }}" 
+                {% if request.endpoint == 'location_query' %}class="active"{% endif %}>库位查询</button>
+
+        <!-- 商户管理按钮 -->
+        <button id="nav-merchant" class="merchant-manage-btn" data-url="{{ url_for('merchant_management') }}" 
+                {% if request.endpoint == 'merchant_management' %}class="active"{% endif %}>商户管理</button>
+    </div>
+
+    <!-- 主要内容区域 -->
+    <div class="main-content">
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- 模块化脚本加载顺序：工具 → 会话 → 核心 → 业务模块 -->
+    <script src="{{ url_for('static', filename='utils.js') }}"></script>
+    <script src="{{ url_for('static', filename='session.js') }}"></script>
+    <script src="{{ url_for('static', filename='users.js') }}"></script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script src="{{ url_for('static', filename='location.js') }}"></script>
+    <script src="{{ url_for('static', filename='records.js') }}"></script>
+    <script src="{{ url_for('static', filename='products_table.js') }}"></script>
+    <script src="{{ url_for('static', filename='incoming_table.js') }}"></script>
+    <script src="{{ url_for('static', filename='merchants.js') }}"></script>
+    <script src="{{ url_for('static', filename='outgoing.js') }}"></script>
+    <script src="{{ url_for('static', filename='shenzhen.js') }}"></script>
+    <script src="{{ url_for('static', filename='stock.js') }}"></script>
+    <script>
+        // 页面加载完成后的初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            const showWelcome = sessionStorage.getItem('showWelcomeAnimation');
+            const welcomeScreen = document.getElementById('welcomeScreen');
+
+            if (showWelcome === 'true' && welcomeScreen) {
+                // 先显示欢迎层，并在后台加载用户与页面
+                welcomeScreen.style.display = 'flex';
+                Promise.resolve(getCurrentUser())
+                    .catch(() => null)
+                    .finally(() => {
+                        try { if (typeof pageInit === 'function') pageInit(); } catch(e) { console.error(e); }
+                        // 完成后短暂延迟，避免未授权按钮闪现
+                        setTimeout(() => {
+                            welcomeScreen.style.display = 'none';
+                            document.documentElement.classList.remove('welcome-mode');
+                            sessionStorage.removeItem('showWelcomeAnimation');
+                        }, 600);
+                        bindNavButtons();
+                    });
+            } else {
+                if (welcomeScreen) welcomeScreen.style.display = 'none';
+                Promise.resolve(getCurrentUser())
+                    .catch(() => null)
+                    .finally(() => {
+                        try { if (typeof pageInit === 'function') pageInit(); } catch(e) { console.error(e); }
+                        bindNavButtons();
+                    });
+            }
+        });
+
+        // 无论脚本加载时机如何，都尝试立即绑定一次，避免错过DOMContentLoaded
+        (function(){
+            if (document.readyState === 'interactive' || document.readyState === 'complete') {
+                bindNavButtons();
+            }
+        })();
+
+        // 导航按钮绑定函数，避免重复绑定
+        function bindNavButtons() {
+            const linkButtons = document.querySelectorAll('[data-url]');
+            linkButtons.forEach(btn => {
+                if (!btn.dataset.bound) {
+                    btn.addEventListener('click', function() {
+                        const url = this.getAttribute('data-url');
+                        if (url) {
+                            window.location.href = url;
+                        }
+                    });
+                    btn.dataset.bound = '1';
+                }
+            });
+        }
+
+        // 登出函数
+        function logout() {
+            fetch('/logout', {
+                method: 'GET',
+                credentials: 'same-origin'
+            }).then(() => {
+                window.location.href = '/login';
+            }).catch(error => {
+                console.error('登出失败:', error);
+                window.location.href = '/login';
+            });
+        }
+    </script>
+    
+    <!-- 记录修改模态框（全局可用） -->
+    <div id="edit-record-modal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <span class="close" onclick="document.getElementById('edit-record-modal').style.display='none'">&times;</span>
+            <h3>修改记录</h3>
+            <div class="form-layout">
+                <div>
+                    <label for="edit-record-product">产品:</label>
+                    <input type="text" id="edit-record-product" disabled>
+                </div>
+                <div>
+                    <label for="edit-record-operation">操作类型:</label>
+                    <input type="text" id="edit-record-operation" disabled>
+                </div>
+                <div>
+                    <label for="edit-record-quantity">数量:</label>
+                    <input type="number" id="edit-record-quantity" min="1">
+                </div>
+                <div>
+                    <label for="edit-record-box-spec">规格:</label>
+                    <input type="number" id="edit-record-box-spec" min="1">
+                </div>
+                <div>
+                    <label for="edit-record-reason">原因:</label>
+                    <input type="text" id="edit-record-reason">
+                </div>
+                <div>
+                    <label for="edit-record-batch-number">批次号:</label>
+                    <input type="text" id="edit-record-batch-number">
+                </div>
+                <div>
+                    <label for="edit-record-expiry-date">过期日期:</label>
+                    <input type="date" id="edit-record-expiry-date">
+                </div>
+                <input type="hidden" id="edit-record-id">
+                <div class="form-button-container">
+                    <button onclick="updateRecord()">保存</button>
+                    <button class="danger" onclick="deleteRecord()">删除</button>
+                    <button onclick="document.getElementById('edit-record-modal').style.display='none'">取消</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

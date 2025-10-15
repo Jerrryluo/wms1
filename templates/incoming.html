@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}入库操作 - 仓库管理系统{% endblock %}
+
+{% block content %}
+<h2>入库操作</h2>
+
+<div class="form-layout">
+    <!-- 入库信息表单 -->
+    <div>
+        <label for="incoming-product-id">产品编号:</label>
+        <select id="incoming-product-id" required></select>
+    </div>
+    <div>
+        <label for="incoming-box-spec">箱规格:</label>
+        <input type="text" id="incoming-box-spec" required>
+    </div>
+    <div>
+        <label for="incoming-box-quantity">箱数:</label>
+        <input type="number" id="incoming-box-quantity" required>
+    </div>
+    <div>
+        <label for="incoming-batch-number">批次号:</label>
+        <input type="text" id="incoming-batch-number" required value="请输入批次号">
+    </div>
+    <div>
+        <label for="incoming-reason">入库原因:</label>
+        <select id="incoming-reason" required>
+            <option value="采购" selected>采购</option>
+            <option value="盘盈">盘盈</option>
+            <option value="操作失误">操作失误</option>
+        </select>
+    </div>
+    <div>
+        <label for="incoming-shelf-life">保质期:</label>
+        <input type="date" id="incoming-shelf-life" required>
+    </div>
+    <div>
+        <label for="incoming-location">库位:</label>
+        <select id="incoming-location" required>
+            <option value="">请选择库位</option>
+            <option value="A1">A1</option>
+            <option value="A2">A2</option>
+            <option value="A3">A3</option>
+            <option value="A4">A4</option>
+            <option value="A5">A5</option>
+            <option value="A6">A6</option>
+            <option value="A7">A7</option>
+            <option value="A8">A8</option>
+            <option value="A12">A12</option>
+            <option value="A13">A13</option>
+            <option value="A14">A14</option>
+            <option value="A15">A15</option>
+            <option value="A16">A16</option>
+            <option value="A17">A17</option>
+            <option value="A18">A18</option>
+            <option value="A19">A19</option>
+            <option value="A20">A20</option>
+            <option value="A21">A21</option>
+            <option value="A22">A22</option>
+            <option value="A23">A23</option>
+            <option value="B1">B1</option>
+            <option value="B2">B2</option>
+            <option value="B3">B3</option>
+            <option value="B4">B4</option>
+            <option value="B5">B5</option>
+            <option value="B6">B6</option>
+            <option value="B7">B7</option>
+            <option value="B8">B8</option>
+            <option value="B9">B9</option>
+            <option value="B10">B10</option>
+            <option value="B11">B11</option>
+            <option value="B12">B12</option>
+            <option value="B13">B13</option>
+            <option value="B15">B15</option>
+            <option value="C1">C1</option>
+            <option value="O301">O301</option>
+            <option value="O302">O302</option>
+            <option value="O303">O303</option>
+            <option value="O401">O401</option>
+            <option value="O402">O402</option>
+            <option value="O403">O403</option>
+           84: <option value="10F">10F</option>
+        </select>
+    </div>
+    <div class="form-button-container">
+        <button onclick="addToIncomingList()">添加到待入库列表</button>
+    </div>
+</div>
+
+<!-- 待入库列表显示区域 -->
+<h3>待入库列表</h3>
+<div class="table-container">
+    <table id="incoming-products-table">
+        <thead>
+            <tr>
+                <th>品名</th>
+                <th>库位</th>
+                <th>规格</th>
+                <th>箱数</th>
+                <th>批次号</th>
+                <th>过期日期</th>
+                <th>入库原因</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="incoming-products-body">
+            <!-- 待入库列表将通过JavaScript动态加载 -->
+        </tbody>
+    </table>
+</div>
+<div class="form-button-container" style="margin-top: 20px;">
+    <button onclick="recordIncoming()">确认入库</button>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // 页面初始化函数
+    function pageInit() {
+        loadIncomingListFromStorage(); // 加载待入库列表
+        populateIncomingProductSelect(); // 加载产品选择框
+    }
+</script>
+{% endblock %}

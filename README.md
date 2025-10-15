@@ -5,6 +5,7 @@ UPDATE product SET name = '姜黄' WHERE id = '0010042';
 SELECT id, name FROM product WHERE id = '0010042';
 ## 项目概述
 本项目是一个仓库管理系统，旨在帮助用户管理库存、出入库记录、用户和商户信息等。
+部署到 Vercel + Neon 的完整指南请阅读 `docs/deploy-vercel-neon.md`。
 
 ## 功能概述
 - **产品管理**：添加、查看和管理产品信息。

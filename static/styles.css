@@ -85,7 +85,7 @@ body {
 .main-content {
     flex: 1;
     margin-left: 200px;
-    padding: 0;
+    padding-left: 5mm; /* 为侧边栏与内容增加约5mm间距 */
     background-color: #f7fafc;
     min-height: 100vh;
     box-sizing: border-box;
@@ -98,7 +98,7 @@ body {
     box-shadow: var(--shadow-lg);
     padding: 24px;
     margin-bottom: 0;
-    animation: fadeIn 0.3s ease;
+    animation: none !important;
 }
 
 @keyframes fadeIn {
@@ -426,7 +426,13 @@ tbody tr:hover {
 }
 
 .tab-content {
-    animation: slideIn 0.3s ease;
+    animation: none !important;
+}
+
+/* 全局禁用动画与过渡，避免页面切换闪烁 */
+* {
+    animation: none !important;
+    transition: none !important;
 }
 
 /* 表单组样式优化 */
@@ -744,6 +750,22 @@ tbody tr:hover {
     background-color: #f44336;
 }
 
+/* 权限与欢迎模式控制 */
+#btn-user-management { display: none; }
+.welcome-mode .welcome-screen { display: flex; }
+.welcome-mode .sidebar, .welcome-mode .main-content, .welcome-mode .user-info { visibility: hidden; }
+
+/* —— 仪表盘专用样式 —— */
+.dashboard { padding: 8px; }
+.dashboard-header { display: flex; align-items: center; gap: 12px; margin: 8px 4px 16px; }
+.dashboard-logo { width: 32px; height: 32px; border-radius: 50%; background: #fff; box-shadow: var(--shadow-sm); }
+.dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.card { border-left: 4px solid #FFD700; }
+.card h3 { margin: 0 0 12px; color: var(--text-primary); }
+.metrics { color: var(--text-secondary); }
+.metrics .number { color: #333; font-weight: 600; }
+.metrics.two-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
 #user-list td button:hover {
     opacity: 0.8;
 }
@@ -873,4 +895,16 @@ tbody tr:hover {
 .small-button:hover {
     background-color: #45a049;
 }
+
+
+/* 产品管理表格列宽调整 */
+#product-list th:nth-child(1),
+#product-list th:nth-child(2),
+#product-list th:nth-child(3),
+#product-list th:nth-child(4),
+#product-list th:nth-child(5)  {
+    width: 20%;
+}
+
+
 

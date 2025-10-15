@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}用户管理 - 仓库管理系统{% endblock %}
+
+{% block content %}
+<h2>用户管理</h2>
+
+<!-- 新增用户表单 -->
+<div class="form-layout">
+    <div>
+        <label for="new-user-username">用户名:</label>
+        <input type="text" id="new-user-username" required>
+    </div>
+    <div>
+        <label for="new-user-password">密码:</label>
+        <input type="password" id="new-user-password" required>
+    </div>
+    <div>
+        <label for="new-user-is-admin">管理员:</label>
+        <input type="checkbox" id="new-user-is-admin">
+    </div>
+    <div>
+        <label>权限:</label>
+        <div id="new-user-permissions" class="permissions-container">
+            <!-- 权限复选框将通过JavaScript动态加载 -->
+        </div>
+    </div>
+    <div class="form-button-container">
+        <button onclick="addUser()">新增用户</button>
+    </div>
+</div>
+
+<!-- 用户列表 -->
+<h3>用户列表</h3>
+<div class="table-container">
+    <table id="user-list">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>用户名</th>
+                <th>管理员</th>
+                <th>最后登录时间</th>
+                <th>权限</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="user-list-body"></tbody>
+    </table>
+</div>
+
+<!-- 用户权限编辑模态框 -->
+<div id="edit-permissions-modal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="document.getElementById('edit-permissions-modal').style.display='none'">&times;</span>
+        <h3>编辑用户权限</h3>
+        <div id="edit-permissions-form">
+            <!-- 管理员复选框与隐藏的用户ID字段 -->
+            <div>
+                <label for="edit-user-is-admin">管理员:</label>
+                <input type="checkbox" id="edit-user-is-admin">
+                <input type="hidden" id="edit-user-id">
+            </div>
+            <div id="edit-user-permissions" class="permissions-container">
+                <!-- 权限复选框将通过JavaScript动态加载 -->
+            </div>
+            <div class="form-button-container">
+                <button onclick="updateUserPermissions()">保存权限</button>
+                <button onclick="document.getElementById('edit-permissions-modal').style.display='none'">取消</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // 页面初始化函数
+    function pageInit() {
+        loadUsers(); // 加载用户列表
+        loadPermissions('new-user-permissions'); // 加载新增用户的权限选项
+    }
+</script>
+{% endblock %}

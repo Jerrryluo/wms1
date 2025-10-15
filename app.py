@@ -1,17 +1,28 @@
 # 导入所需的Flask框架组件和其他Python库，用于构建Web应用程序和处理数据库操作
-from flask import Flask, request, jsonify, render_template, session, redirect, url_for
-from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, login_required, login_user, logout_user, current_user
+from flask import Flask, request, jsonify, render_template, session, redirect, url_for, Response
+from flask_login import login_required, login_user, logout_user, current_user
 from datetime import datetime, timedelta
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
+import re
 from openpyxl import Workbook
+from extensions import db, login_manager
+from utils import generate_unique_id
+from constants import (
+    DEFAULT_USERNAME,
+    DEFAULT_PASSWORD,
+    SUPPLEMENT_STOCKOUT_DAYS_THRESHOLD,
+    PACKAGING_STOCKOUT_DAYS_THRESHOLD,
+    SUPPLEMENT_EXPIRY_DAYS_THRESHOLD,
+)
+from init_seeds import seed_defaults, ensure_admin_password_compat as ensure_admin_password_compat_seed
+from models import Merchant, Product, Stock, Record, User, Location, Permission, UserPermission, ShenzhenRecord
 
 # 配置类定义
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or os.urandom(24)
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///warehouse.db'
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///' + os.path.join(os.path.abspath(os.path.dirname(__file__)), 'warehouse.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     PERMANENT_SESSION_LIFETIME = timedelta(hours=1)
 
@@ -28,7 +39,7 @@ def permission_required(permission_name):
 # 初始化Flask应用并配置SQLite数据库连接，设置会话安全密钥和过期时间
 app = Flask(__name__)
 app.config.from_object(Config)
-db = SQLAlchemy(app)
+db.init_app(app)
 
 # 添加请求处理前钩子，确保不会延长登录有效期
 @app.before_request
@@ -55,132 +66,54 @@ def not_found_error(error):
 def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
 
+# 兼容前端开发环境的占位路由，避免浏览器请求 /@vite/client 报 404
+@app.route('/@vite/client')
+def vite_client_stub():
+    # 返回一个空的 JS 模块，防止控制台出现 404 错误
+    return Response("// Vite client stub for Flask app\nexport const hot = undefined;", mimetype='application/javascript')
+
+# 文件名安全处理，避免非法字符导致保存失败
+def sanitize_filename(text: str) -> str:
+    if not isinstance(text, str):
+        return 'unknown'
+    # 替换不可用于文件名的字符为下划线
+    safe = re.sub(r'[\\/:*?"<>|]', '_', text)
+    # 去除首尾空白
+    return safe.strip() or 'unknown'
+
 # 初始化Flask-Login
-login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'  # 设置登录视图的端点
 
-# 设置默认管理员账户信息，用于系统初始化时创建管理员用户
-DEFAULT_USERNAME = 'admin'
-DEFAULT_PASSWORD = 'admin123'
+# 默认管理员账户信息从 constants 模块导入
 
 # 生成唯一ID的工具函数，使用时间戳和微秒确保ID的唯一性，用于各种记录的主键生成
 def generateUniqueId():
     now = datetime.now()
     return now.strftime('%Y%m%d%H%M%S%f')[:20]  # 使用微秒确保唯一性
 
-# 商户表模型定义，存储系统中的商户信息
-class Merchant(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), unique=True, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.now)
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'name': self.name,
-            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else None
-        }
-
-# 产品表模型定义，存储产品基本信息，与Stock表和Record表存在关联关系
-class Product(db.Model):
-    id = db.Column(db.String(20), primary_key=True)
-    name = db.Column(db.String(100))
-    category = db.Column(db.String(50))
-    supplier = db.Column(db.String(100))
-    unit = db.Column(db.String(10))
-    merchant_id = db.Column(db.Integer, db.ForeignKey('merchant.id'), nullable=False)
-
-# 库存表模型定义，记录产品库存详细信息，通过外键与Product表关联，支持库存管理和预警功能
-class Stock(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    product_id = db.Column(db.String(20), db.ForeignKey('product.id'))
-    box_spec = db.Column(db.String(50))
-    quantity = db.Column(db.Integer)
-    expiry_date = db.Column(db.Date)
-    batch_number = db.Column(db.String(50))  # 批次号
-    in_transit = db.Column(db.Integer)
-    daily_consumption = db.Column(db.Float)
-    location = db.Column(db.String(20))  # 库位
-    merchant_id = db.Column(db.Integer, db.ForeignKey('merchant.id'), nullable=False)
-    unit_price = db.Column(db.Float)  # 新增单价字段
-    shenzhen_stock = db.Column(db.Integer, default=0)  # 深圳库存字段
-
-# 操作记录表模型定义，记录所有入库和出库操作，支持追踪和审计功能
-class Record(db.Model):
-    id = db.Column(db.String(20), primary_key=True)
-    product_id = db.Column(db.String(20))
-    operation_type = db.Column(db.String(10))
-    quantity = db.Column(db.Integer)
-    date = db.Column(db.DateTime, default=datetime.now)
-    additional_info = db.Column(db.String(200))
-    merchant_id = db.Column(db.Integer, db.ForeignKey('merchant.id'), nullable=False)
-    operator_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)  # 添加操作人ID字段
-
-    # 建立与用户表的关系
-    operator = db.relationship('User', backref='records', lazy=True)
-
-# 用户表模型定义，支持用户认证和密码加密，记录用户登录信息
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
-    password_hash = db.Column(db.String(120), nullable=False)
-    last_login = db.Column(db.DateTime)
-    current_merchant_id = db.Column(db.Integer, db.ForeignKey('merchant.id'), nullable=True)
-    is_admin = db.Column(db.Boolean, default=False)  # 新增管理员标志
-    # 用户权限关联
-    permissions = db.relationship('UserPermission', backref='user', lazy='dynamic')
-
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
-
-    def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
-
-    # Flask-Login接口实现
-    def is_authenticated(self):
-        return True
-
-    def is_active(self):
-        return True
-
-    def is_anonymous(self):
-        return False
-
-    def get_id(self):
-        return str(self.id)
-
-    # 检查用户是否有特定权限
-    def has_permission(self, permission_name):
-        # 管理员拥有所有权限
-        if self.is_admin:
-            return True
-
-        # 查询用户是否有指定权限
-        permission = Permission.query.filter_by(name=permission_name).first()
-        if not permission:
-            return False
-
-        user_permission = UserPermission.query.filter_by(
-            user_id=self.id,
-            permission_id=permission.id
-        ).first()
-
-        return user_permission is not None
 
 # 用户加载函数，用于Flask-Login从会话中恢复用户
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# 库位表模型定义，用于管理仓库中的物理位置信息，支持库存定位功能
-class Location(db.Model):
-    id = db.Column(db.String(20), primary_key=True)
-    name = db.Column(db.String(100))
-    description = db.Column(db.String(200))
-    merchant_id = db.Column(db.Integer, db.ForeignKey('merchant.id'), nullable=False)
+# 模型从 models.py 导入，避免重复定义导致的表重复问题
 
 
+def ensure_admin_password_compat():
+    """如果管理员密码使用 scrypt，则迁移为默认密码的 pbkdf2 哈希。
+    解决某些 Python 环境缺少 hashlib.scrypt 导致无法登录的问题。
+    """
+    try:
+        admin = User.query.filter_by(username=DEFAULT_USERNAME).first()
+        if admin and isinstance(admin.password_hash, str) and admin.password_hash.startswith('scrypt:'):
+            admin.set_password(DEFAULT_PASSWORD)
+            db.session.commit()
+            print('管理员密码哈希已迁移为 pbkdf2:sha256')
+    except Exception as e:
+        db.session.rollback()
+        print(f'管理员密码兼容处理失败: {e}')
 
 # 登录路由处理，验证用户身份并创建会话
 @app.route('/login', methods=['GET', 'POST'])
@@ -215,11 +148,149 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# 主页路由处理，需要登录验证，渲染主页模板
+# 主页路由处理，重定向到入库操作页面
 @app.route('/')
 @login_required
 def index():
-    return render_template('index.html')
+    return redirect(url_for('dashboard_view'))
+
+# 产品管理页面
+@app.route('/products')
+@login_required
+def product_management():
+    return render_template('products.html')
+
+# 入库操作页面
+@app.route('/incoming')
+@login_required
+def incoming_operation():
+    return render_template('incoming.html')
+
+# 出库操作页面
+@app.route('/outgoing')
+@login_required
+def outgoing_operation():
+    return render_template('outgoing.html')
+
+# 出入库记录页面
+@app.route('/records')
+@login_required
+def records_view():
+    return render_template('records.html')
+
+# 库存页面
+@app.route('/stock')
+@login_required
+def stock_view():
+    return render_template('stock.html')
+
+# 库位查询页面
+@app.route('/location')
+@login_required
+def location_query():
+    return render_template('location.html')
+
+# 仪表盘页面
+@app.route('/dashboard')
+@login_required
+def dashboard_view():
+    return render_template('dashboard.html')
+
+
+# 用户管理页面
+@app.route('/users')
+@login_required
+def user_management():
+    return render_template('users.html')
+
+# 商户管理页面
+@app.route('/merchants')
+@login_required
+def merchant_management():
+    return render_template('merchants.html')
+
+# 直接库存移位：不记录到出入库记录，仅调整库存行位置与数量
+@app.route('/api/stock/relocate', methods=['POST'])
+@login_required
+def relocate_stock():
+    data = request.json
+    try:
+        # 基本参数
+        product_id = data.get('product_id')
+        box_spec = data.get('box_spec')
+        quantity = int(data.get('quantity', 0))
+        # 兼容前端字段命名：from_location/to_location
+        old_location = data.get('old_location') or data.get('from_location')
+        new_location = data.get('new_location') or data.get('to_location')
+        batch_number = data.get('batch_number') or None
+        expiry_date_str = data.get('expiry_date')
+        expiry_date = None
+        if expiry_date_str:
+            try:
+                expiry_date = datetime.strptime(expiry_date_str, '%Y-%m-%d').date()
+            except Exception:
+                expiry_date = None
+
+        if not product_id or not box_spec or not old_location or not new_location or quantity <= 0:
+            return jsonify({'success': False, 'message': '参数不完整或数量不合法'}), 400
+
+        if old_location == new_location:
+            return jsonify({'success': False, 'message': '新库位不能与原库位相同'}), 400
+
+        # 查找原位置库存（限定当前商户，匹配批次/过期日期）
+        stock_from = Stock.query.filter(
+            Stock.product_id == product_id,
+            Stock.box_spec == box_spec,
+            Stock.merchant_id == current_user.current_merchant_id,
+            Stock.location == old_location,
+            Stock.batch_number == batch_number,
+            Stock.expiry_date == expiry_date,
+            Stock.quantity > 0
+        ).first()
+
+        if not stock_from:
+            return jsonify({'success': False, 'message': '未找到原库位库存或库存为0'}), 404
+
+        if stock_from.quantity < quantity:
+            return jsonify({'success': False, 'message': '移位数量不能大于库存数量'}), 400
+
+        # 扣减原位置库存
+        stock_from.quantity -= quantity
+
+        # 目标位置库存（同产品/规格/批次/过期）
+        stock_to = Stock.query.filter(
+            Stock.product_id == product_id,
+            Stock.box_spec == box_spec,
+            Stock.merchant_id == current_user.current_merchant_id,
+            Stock.location == new_location,
+            Stock.batch_number == batch_number,
+            Stock.expiry_date == expiry_date
+        ).first()
+
+        if stock_to:
+            stock_to.quantity = (stock_to.quantity or 0) + quantity
+        else:
+            # 创建新库存行
+            stock_to = Stock(
+                product_id=product_id,
+                box_spec=box_spec,
+                quantity=quantity,
+                batch_number=batch_number,
+                expiry_date=expiry_date,
+                in_transit=stock_from.in_transit,
+                daily_consumption=stock_from.daily_consumption,
+                location=new_location,
+                merchant_id=current_user.current_merchant_id,
+                unit_price=stock_from.unit_price,
+                shenzhen_stock=0
+            )
+            db.session.add(stock_to)
+
+        db.session.commit()
+        return jsonify({'success': True, 'message': '移位成功'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'移位失败: {str(e)}'}), 500
 
 # 商户管理API接口，获取所有商户列表
 @app.route('/api/merchants', methods=['GET', 'POST'])
@@ -307,6 +378,11 @@ def get_current_merchant():
     if default_merchant:
         current_user.current_merchant_id = default_merchant.id
         db.session.commit()
+        # 首次为用户设定默认商户后，触发当日归档（仅当日未生成时会生成）
+        try:
+            check_and_export_excel(default_merchant.id)
+        except Exception as e:
+            print(f"设置默认商户后触发归档失败: {e}")
         return jsonify({'success': True, 'merchant': default_merchant.to_dict()})
 
     return jsonify({'success': False, 'message': '未找到商户信息'}), 404
@@ -372,7 +448,7 @@ def handle_incoming():
             return jsonify({'message': '您刚刚已经提交过相同的入库记录，请勿重复操作'}), 400
 
         try:
-            operation_id = generateUniqueId()
+            operation_id = generate_unique_id()
             print(f"生成操作ID: {operation_id}")
             
             # 创建库存记录 - 直接添加到库存中
@@ -388,7 +464,7 @@ def handle_incoming():
             )
             
             # 创建入库操作记录
-            record_id = generateUniqueId()
+            record_id = generate_unique_id()
             new_record = Record(
                 id=record_id,
                 product_id=data['product_id'],
@@ -448,9 +524,54 @@ def handle_products():
             'id': p.id,
             'name': p.name,
             'category': p.category,
-            'supplier': p.supplier,
-            'unit': p.unit
+            'supplier': p.supplier
         } for p in products])
+
+# 更新产品（仅管理员）：支持修改编号、品名、类别、供应商
+@app.route('/api/products/<product_id>', methods=['PUT'])
+@login_required
+def update_product(product_id):
+    if not current_user.is_admin:
+        return jsonify({'success': False, 'message': '无权限'}), 403
+    data = request.json or {}
+    try:
+        product = Product.query.get(product_id)
+        if not product or product.merchant_id != current_user.current_merchant_id:
+            return jsonify({'success': False, 'message': '产品不存在'}), 404
+
+        new_id = data.get('id', product.id)
+        new_name = data.get('name', product.name)
+        new_category = data.get('category', product.category)
+        new_supplier = data.get('supplier', product.supplier)
+
+        # 若修改了编号，检查是否冲突
+        if new_id != product.id:
+            existing = Product.query.get(new_id)
+            if existing:
+                return jsonify({'success': False, 'message': '目标产品编号已存在'}), 400
+
+            old_id = product.id
+            product.id = new_id
+            # 级联更新相关表（限当前商户）
+            Stock.query.filter_by(product_id=old_id, merchant_id=product.merchant_id).update({'product_id': new_id})
+            Record.query.filter_by(product_id=old_id, merchant_id=product.merchant_id).update({'product_id': new_id})
+            ShenzhenRecord.query.filter_by(product_id=old_id, merchant_id=product.merchant_id).update({'product_id': new_id})
+
+        # 更新其它字段
+        product.name = new_name
+        product.category = new_category
+        product.supplier = new_supplier
+
+        db.session.commit()
+        return jsonify({'success': True, 'message': '产品更新成功', 'product': {
+            'id': product.id,
+            'name': product.name,
+            'category': product.category,
+            'supplier': product.supplier
+        }}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 # 出库操作路由处理，验证库存并执行出库操作，更新库存记录和创建操作日志
 @app.route('/api/outgoing', methods=['POST'])
@@ -505,10 +626,9 @@ def handle_outgoing():
 
         # 创建出库记录，包含出库原因和库存信息
         current_time = datetime.now()
-        operation_id = generateUniqueId()
+        operation_id = generate_unique_id()
 
-        # 获取单价信息，若未录入则显示为"-"
-        unit_price = stock.unit_price if stock.unit_price is not None else '-'
+        # 不再处理或记录单价信息
 
         new_record = Record(
             id=operation_id,
@@ -516,7 +636,7 @@ def handle_outgoing():
             operation_type='出库',
             quantity=data['quantity'],
             date=current_time,
-            additional_info=f"出库原因: {data['outgoing_reason']}, 箱规格: {data['box_spec']}, 批次号: {stock.batch_number}, 过期日期: {stock.expiry_date.strftime('%Y-%m-%d') if stock.expiry_date else '无'}, 库位: {location}, 单价: {unit_price}",  # 包含单价信息
+            additional_info=f"出库原因: {data['outgoing_reason']}, 箱规格: {data['box_spec']}, 批次号: {stock.batch_number}, 过期日期: {stock.expiry_date.strftime('%Y-%m-%d') if stock.expiry_date else '无'}, 库位: {location}",
             merchant_id=current_user.current_merchant_id,
             operator_id=current_user.id  # 添加操作人ID
         )
@@ -542,7 +662,7 @@ def handle_outgoing():
                 'operation_type': '出库',
                 'quantity': data['quantity'],
                 'date': current_time.isoformat(),
-                'additional_info': f"出库原因: {data['outgoing_reason']}, 箱规格: {data['box_spec']}, 批次号: {stock.batch_number}, 过期日期: {stock.expiry_date.strftime('%Y-%m-%d') if stock.expiry_date else '无'}, 库位: {location}, 单价: {unit_price}"  # 包含单价信息
+                'additional_info': f"出库原因: {data['outgoing_reason']}, 箱规格: {data['box_spec']}, 批次号: {stock.batch_number}, 过期日期: {stock.expiry_date.strftime('%Y-%m-%d') if stock.expiry_date else '无'}, 库位: {location}"
             }
         })
 
@@ -562,8 +682,12 @@ def get_stock():
         if not current_user.current_merchant_id:
             return jsonify({'message': '请先选择商户'}), 400
             
-        # 添加商户过滤
-        stock = Stock.query.filter_by(merchant_id=current_user.current_merchant_id).all()
+        # 添加商户过滤，并排除深圳库位；统一过滤零库存
+        stock = Stock.query.filter(
+            Stock.merchant_id == current_user.current_merchant_id,
+            Stock.quantity > 0,
+            Stock.location.is_(None) | Stock.location.notin_(['Shenzhen', 'shenzhen'])
+        ).all()
         
         result = []
         for s in stock:
@@ -575,7 +699,7 @@ def get_stock():
                     'name': product.name,
                     'category': product.category,
                     'supplier': product.supplier,
-                    'unit': product.unit,
+                    # 移除产品单位字段
                     'box_spec': s.box_spec,
                     'quantity': s.quantity,
                     'batch_number': s.batch_number,
@@ -583,12 +707,254 @@ def get_stock():
                     'in_transit': s.in_transit,
                     'daily_consumption': s.daily_consumption,
                     'location': s.location,
-                    'unit_price': s.unit_price,
+                    # 移除单价字段
                     'shenzhen_stock': s.shenzhen_stock or 0
                 })
         return jsonify(result)
     except Exception as e:
         error_msg = f"获取库存信息失败: {str(e)}"
+        print(error_msg)
+        return jsonify({'message': error_msg}), 500
+
+# 仪表盘聚合数据接口
+@app.route('/api/dashboard', methods=['GET'])
+@login_required
+def dashboard_data():
+    try:
+        merchant_id = current_user.current_merchant_id
+        if not merchant_id:
+            return jsonify({'message': '请先选择商户'}), 400
+
+        # 工具：解析规格中的每箱单位数（如 "24" 或 "24/箱"，默认1）
+        def parse_units_per_box(spec):
+            if not spec:
+                return 1
+            try:
+                m = re.search(r"(\d+(?:\.\d+)?)", str(spec))
+                return float(m.group(1)) if m else 1
+            except Exception:
+                return 1
+
+        # 1) 库存概览（香港库存，不含深圳；统一过滤零库存）
+        hk_stock_rows = Stock.query.filter(
+            Stock.merchant_id == merchant_id,
+            Stock.quantity > 0,
+            Stock.location.is_(None) | Stock.location.notin_(['Shenzhen', 'shenzhen'])
+        ).all()
+
+        product_ids_in_stock = set()
+        total_items = 0.0
+        product_items_map = {}
+        product_daily_map = {}
+        for s in hk_stock_rows:
+            product_ids_in_stock.add(s.product_id)
+            units = parse_units_per_box(s.box_spec)
+            items = units * (s.quantity or 0)
+            total_items += items
+            product_items_map[s.product_id] = product_items_map.get(s.product_id, 0.0) + items
+            # 记录最大每日消耗值（若有）
+            if s.daily_consumption is not None:
+                prev = product_daily_map.get(s.product_id)
+                product_daily_map[s.product_id] = max(prev or 0.0, float(s.daily_consumption))
+
+        product_count = Product.query.filter_by(merchant_id=merchant_id).count()
+
+        # 已移除旧的30天低库存预警逻辑
+
+        # 新增：分类断货与过期提醒
+        supplement_stockout_90 = []
+        packaging_stockout_35 = []
+        # 过期提醒需逐批次计算
+        now = datetime.now()
+        supplement_expiry_360 = []
+
+        for pid, items in product_items_map.items():
+            daily = product_daily_map.get(pid, 0.0)
+            days_left = (items / daily) if daily and daily > 0 else None
+            prod = Product.query.filter_by(id=pid, merchant_id=merchant_id).first()
+            prod_name = prod.name if prod else ''
+            prod_category = (prod.category or '') if prod else ''
+
+            # 已移除旧的30天低库存列表
+
+            # 分类断货提醒：补剂 90天
+            if prod_category == '补剂' and days_left is not None and days_left <= float(SUPPLEMENT_STOCKOUT_DAYS_THRESHOLD):
+                supplement_stockout_90.append({
+                    'product_id': pid,
+                    'name': prod_name,
+                    'items': round(items, 2),
+                    'daily_consumption': round(daily, 2),
+                    'days_to_stockout': round(days_left, 2)
+                })
+
+            # 分类断货提醒：包装用耗材 35天
+            if prod_category == '包装用耗材' and days_left is not None and days_left <= float(PACKAGING_STOCKOUT_DAYS_THRESHOLD):
+                packaging_stockout_35.append({
+                    'product_id': pid,
+                    'name': prod_name,
+                    'items': round(items, 2),
+                    'daily_consumption': round(daily, 2),
+                    'days_to_stockout': round(days_left, 2)
+                })
+
+        # 2) 入库/出库概览（按箱数统计）
+        # 过期提醒：补剂 360天（逐批次，忽略库存为0的批次）
+        for s in hk_stock_rows:
+            prod = Product.query.filter_by(id=s.product_id, merchant_id=merchant_id).first()
+            if not prod or (prod.category or '') != '补剂':
+                continue
+            # 只提醒仍有库存的批次
+            if not s.quantity or s.quantity <= 0:
+                continue
+            if not s.expiry_date:
+                continue
+            try:
+                days_to_expiry = (s.expiry_date - now.date()).days
+            except Exception:
+                continue
+            if days_to_expiry <= int(SUPPLEMENT_EXPIRY_DAYS_THRESHOLD):
+                units = parse_units_per_box(s.box_spec)
+                items = units * (s.quantity or 0)
+                supplement_expiry_360.append({
+                    'product_id': s.product_id,
+                    'name': prod.name or '',
+                    'expiry_date': s.expiry_date.strftime('%Y-%m-%d'),
+                    'days_to_expiry': days_to_expiry,
+                    'boxes': s.quantity or 0,
+                    'box_spec': s.box_spec,
+                    'items': round(items, 2)
+                })
+
+        now = datetime.now()
+        start_today = datetime(now.year, now.month, now.day)
+        start_week = start_today - timedelta(days=6)
+        start_month = start_today - timedelta(days=29)
+
+        def sum_records(op_type, since):
+            q = Record.query.filter(
+                Record.merchant_id == merchant_id,
+                Record.operation_type == op_type,
+                Record.date >= since
+            )
+            return sum((r.quantity or 0) for r in q.all())
+
+        incoming_today = sum_records('入库', start_today)
+        incoming_week = sum_records('入库', start_week)
+        incoming_month = sum_records('入库', start_month)
+
+        outgoing_today = sum_records('出库', start_today)
+        outgoing_week = sum_records('出库', start_week)
+        outgoing_month = sum_records('出库', start_month)
+
+        # 3) 产品表现（最近30天）
+        start_30d = start_month
+        outgoing_30d = db.session.query(Record).filter(
+            Record.merchant_id == merchant_id,
+            Record.operation_type == '出库',
+            Record.date >= start_30d
+        ).all()
+        outgoing_by_product = {}
+        for r in outgoing_30d:
+            outgoing_by_product[r.product_id] = outgoing_by_product.get(r.product_id, 0) + (r.quantity or 0)
+
+        # 最畅销 Top 5
+        best_sellers = []
+        for pid, qty in sorted(outgoing_by_product.items(), key=lambda x: x[1], reverse=True)[:5]:
+            prod = Product.query.filter_by(id=pid, merchant_id=merchant_id).first()
+            best_sellers.append({'product_id': pid, 'name': prod.name if prod else '', 'outgoing_boxes': qty})
+
+        # 滞销（包含出库为0的产品），取最少的5个
+        all_products = Product.query.filter_by(merchant_id=merchant_id).all()
+        slow_movers_pool = []
+        for p in all_products:
+            slow_qty = outgoing_by_product.get(p.id, 0)
+            slow_movers_pool.append({'product_id': p.id, 'name': p.name, 'outgoing_boxes': slow_qty})
+        slow_movers = sorted(slow_movers_pool, key=lambda x: x['outgoing_boxes'])[:5]
+
+        # 4) 库位利用率（按香港库存中出现的库位计算）
+        locations = set()
+        for s in hk_stock_rows:
+            if s.location:
+                locations.add(s.location)
+        total_locations = len(locations)
+        occupied_locations = len({s.location for s in hk_stock_rows if s.location})
+
+        # 5) 深圳待调拨数量与滞留时间
+        sz_rows = Stock.query.filter(
+            Stock.merchant_id == merchant_id,
+            Stock.location.in_(['Shenzhen', 'shenzhen']),
+            Stock.quantity > 0
+        ).all()
+        pending_boxes = 0
+        retention_days = []
+        items_detail = []
+        for s in sz_rows:
+            units = parse_units_per_box(s.box_spec)
+            boxes = (s.quantity or 0)
+            items = units * boxes
+            pending_boxes += boxes
+
+            # 查找最近一次深圳入库记录以估算滞留天数
+            rec = db.session.query(ShenzhenRecord).filter(
+                ShenzhenRecord.merchant_id == merchant_id,
+                ShenzhenRecord.product_id == s.product_id,
+                ShenzhenRecord.operation_type == '入库',
+                ShenzhenRecord.box_spec == s.box_spec,
+                ShenzhenRecord.batch_number == s.batch_number,
+                ShenzhenRecord.expiry_date == s.expiry_date
+            ).order_by(ShenzhenRecord.date.desc()).first()
+
+            days = None
+            if rec and rec.date:
+                days = (now - rec.date).days
+                retention_days.append(days)
+
+            prod = Product.query.filter_by(id=s.product_id, merchant_id=merchant_id).first()
+            items_detail.append({
+                'product_id': s.product_id,
+                'name': (prod.name if prod else ''),
+                'boxes': boxes,
+                'items': round(items, 2),
+                'days_since_inbound': days
+            })
+
+        avg_retention_days = (sum(retention_days) / len(retention_days)) if retention_days else None
+
+        return jsonify({
+            'stock': {
+                'total_items': round(total_items, 2),
+                'product_count': product_count
+            },
+            'alerts': {
+                'thresholds': {
+                    'supplement_stockout_days': SUPPLEMENT_STOCKOUT_DAYS_THRESHOLD,
+                    'packaging_stockout_days': PACKAGING_STOCKOUT_DAYS_THRESHOLD,
+                    'supplement_expiry_days': SUPPLEMENT_EXPIRY_DAYS_THRESHOLD
+                },
+                'supplement_stockout_90': supplement_stockout_90,
+                'packaging_stockout_35': packaging_stockout_35,
+                'supplement_expiry_360': supplement_expiry_360
+            },
+            'flow': {
+                'incoming': {'today': incoming_today, 'week': incoming_week, 'month': incoming_month},
+                'outgoing': {'today': outgoing_today, 'week': outgoing_week, 'month': outgoing_month}
+            },
+            'performance': {
+                'best_sellers': best_sellers,
+                'slow_movers': slow_movers
+            },
+            'location': {
+                'total_locations': total_locations,
+                'occupied_locations': occupied_locations
+            },
+            'shenzhen': {
+                'pending_boxes': pending_boxes,
+                'avg_retention_days': avg_retention_days,
+                'items': items_detail
+            }
+        })
+    except Exception as e:
+        error_msg = f"获取仪表盘数据失败: {str(e)}"
         print(error_msg)
         return jsonify({'message': error_msg}), 500
 
@@ -639,13 +1005,7 @@ def get_records():
                 # 计算总数
                 total = quantity * box_spec_value
 
-                # 获取单价信息，若未录入则显示为"-"
-                unit_price = None
-                if r.additional_info and '单价: ' in r.additional_info:
-                    unit_price_str = r.additional_info.split('单价: ')[1].split(',')[0]  # 提取单价字符串
-                    unit_price = float(unit_price_str) if unit_price_str not in ['-', 'None'] else '-'  # 处理单价为'-'或'None'的情况
-                else:
-                    unit_price = '-'  # 如果单价未录入，显示为"-"
+                # 移除单价信息处理
 
                 # 修复过期日期显示问题，同时处理"保质期"和"过期日期"两种关键词
                 expiry_date = '无'
@@ -691,7 +1051,6 @@ def get_records():
                     'batch_number': batch_number,
                     'expiry_date': expiry_date,
                     'operator': operator_name,
-                    'unit_price': unit_price,  # 这里可以是待录入或实际单价
                     'total': total
                 })
             except Exception as inner_e:
@@ -866,7 +1225,130 @@ def update_record():
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': f'修改记录失败: {str(e)}'}), 500
-
+ 
+ # 记录删除路由处理，删除记录并同步更新库存
+@app.route('/api/records/<record_id>', methods=['DELETE'])
+@login_required
+def delete_record_api(record_id):
+     try:
+         # 仅管理员可删除
+         if not current_user.is_admin:
+             return jsonify({'success': False, 'message': '只有管理员可以删除记录'}), 403
+ 
+         # 校验商户上下文
+         if not current_user.current_merchant_id:
+             return jsonify({'success': False, 'message': '请先选择商户'}), 400
+ 
+         record = Record.query.get(record_id)
+         if not record:
+             return jsonify({'success': False, 'message': '记录不存在'}), 404
+ 
+         if record.merchant_id != current_user.current_merchant_id:
+             return jsonify({'success': False, 'message': '记录不属于当前商户'}), 403
+ 
+         # 从记录中解析规格、批次、过期和库位
+         info = record.additional_info or ''
+         box_spec = None
+         batch_number = None
+         expiry_date_str = None
+         location = None
+ 
+         if '箱规格: ' in info:
+             try:
+                 box_spec = info.split('箱规格: ')[1].split(',')[0]
+             except Exception:
+                 box_spec = None
+         if '批次号: ' in info:
+             try:
+                 batch_number = info.split('批次号: ')[1].split(',')[0]
+             except Exception:
+                 batch_number = None
+         if '过期日期: ' in info:
+             try:
+                 expiry_date_str = info.split('过期日期: ')[1].split(',')[0]
+             except Exception:
+                 expiry_date_str = None
+         elif '保质期: ' in info:
+             try:
+                 expiry_date_str = info.split('保质期: ')[1].split(',')[0]
+             except Exception:
+                 expiry_date_str = None
+         if '库位: ' in info:
+             try:
+                 location = info.split('库位: ')[1].split(',')[0]
+             except Exception:
+                 location = None
+ 
+         # 规范化字段
+         if batch_number in ['无', 'None', '']:
+             batch_number = None
+         if location in ['无', 'None', '']:
+             location = None
+         expiry_date = None
+         if expiry_date_str and expiry_date_str not in ['无', 'None', '']:
+             try:
+                 expiry_date = datetime.strptime(expiry_date_str, '%Y-%m-%d').date()
+             except Exception:
+                 expiry_date = None
+ 
+         # 查找对应库存
+         query = Stock.query.filter(
+             Stock.product_id == record.product_id,
+             Stock.merchant_id == record.merchant_id
+         )
+         if box_spec is not None:
+             query = query.filter(Stock.box_spec == str(box_spec))
+         else:
+             query = query.filter(Stock.box_spec.is_(None))
+         if batch_number is not None:
+             query = query.filter(Stock.batch_number == batch_number)
+         else:
+             query = query.filter(Stock.batch_number.is_(None))
+         if location is not None:
+             query = query.filter(Stock.location == location)
+         else:
+             query = query.filter(Stock.location.is_(None))
+         if expiry_date is not None:
+             query = query.filter(Stock.expiry_date == expiry_date)
+         else:
+             query = query.filter(Stock.expiry_date.is_(None))
+ 
+         stock = query.first()
+         qty = record.quantity or 0
+ 
+         if record.operation_type == '入库':
+             if not stock:
+                 return jsonify({'success': False, 'message': '找不到对应的库存记录，无法删除'}), 404
+             # 删除入库记录需回退库存
+             if (stock.quantity or 0) < qty:
+                 return jsonify({'success': False, 'message': '库存不足，无法删除该入库记录'}), 400
+             stock.quantity = (stock.quantity or 0) - qty
+         elif record.operation_type == '出库':
+             # 删除出库记录需恢复库存
+             if stock:
+                 stock.quantity = (stock.quantity or 0) + qty
+             else:
+                 stock = Stock(
+                     product_id=record.product_id,
+                     box_spec=str(box_spec) if box_spec is not None else None,
+                     quantity=qty,
+                     batch_number=batch_number,
+                     expiry_date=expiry_date,
+                     location=location,
+                     merchant_id=record.merchant_id
+                 )
+                 db.session.add(stock)
+         else:
+             return jsonify({'success': False, 'message': '不支持的记录类型'}), 400
+ 
+         # 删除记录
+         db.session.delete(record)
+         db.session.commit()
+ 
+         return jsonify({'success': True, 'message': '记录已删除'})
+     except Exception as e:
+         db.session.rollback()
+         return jsonify({'success': False, 'message': f'删除记录失败: {str(e)}'}), 500
 # 库存更新路由处理，支持更新在途数量、日常消耗量和深圳库存等信息
 @app.route('/api/stock/update', methods=['POST'])
 def update_stock():
@@ -951,25 +1433,7 @@ def delete_product(product_id):
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)})
 
-# 权限表模型定义，存储系统中的各种权限类型
-class Permission(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), unique=True, nullable=False)  # 权限名称
-    description = db.Column(db.String(200))  # 权限描述
-    created_at = db.Column(db.DateTime, default=datetime.now)
-
-    # 权限与用户的关联
-    users = db.relationship('UserPermission', backref='permission', lazy='dynamic')
-
-# 用户权限关联表，存储用户与权限的多对多关系
-class UserPermission(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    permission_id = db.Column(db.Integer, db.ForeignKey('permission.id'), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.now)
-
-    # 添加唯一约束，确保一个用户不会重复分配同一权限
-    __table_args__ = (db.UniqueConstraint('user_id', 'permission_id', name='unique_user_permission'),)
+# 权限模型从 models.py 导入
 
 # 用户管理API，获取所有用户列表
 @app.route('/api/users', methods=['GET'])
@@ -1042,16 +1506,26 @@ def create_user():
         db.session.add(new_user)
         db.session.flush()  # 获取用户ID
 
-        # 分配权限
+        # 分配权限（容错：支持字符串/字典类型的权限ID）
+        perm_ids = []
         if 'permissions' in data and isinstance(data['permissions'], list):
-            for perm_id in data['permissions']:
-                permission = Permission.query.get(perm_id)
-                if permission:
-                    user_permission = UserPermission(
-                        user_id=new_user.id,
-                        permission_id=permission.id
-                    )
-                    db.session.add(user_permission)
+            for p in data['permissions']:
+                try:
+                    if isinstance(p, dict):
+                        pid = int(p.get('id'))
+                    else:
+                        pid = int(p)
+                    perm_ids.append(pid)
+                except (TypeError, ValueError):
+                    continue
+        for pid in set(perm_ids):
+            permission = Permission.query.get(pid)
+            if permission:
+                user_permission = UserPermission(
+                    user_id=new_user.id,
+                    permission_id=permission.id
+                )
+                db.session.add(user_permission)
 
         db.session.commit()
         return jsonify({'message': '用户创建成功', 'user_id': new_user.id}), 201
@@ -1104,9 +1578,19 @@ def update_user_permissions(user_id):
         # 先删除用户现有的所有权限
         UserPermission.query.filter_by(user_id=user_id).delete()
         
-        # 分配新的权限
-        for perm_id in data['permissions']:
-            permission = Permission.query.get(perm_id)
+        # 分配新的权限（容错：支持字符串/字典类型的权限ID）
+        perm_ids = []
+        for p in data['permissions']:
+            try:
+                if isinstance(p, dict):
+                    pid = int(p.get('id'))
+                else:
+                    pid = int(p)
+                perm_ids.append(pid)
+            except (TypeError, ValueError):
+                continue
+        for pid in set(perm_ids):
+            permission = Permission.query.get(pid)
             if permission:
                 user_permission = UserPermission(
                     user_id=user_id,
@@ -1116,7 +1600,10 @@ def update_user_permissions(user_id):
         
         # 更新管理员状态（如果提供了该字段）
         if 'is_admin' in data:
-            user.is_admin = data['is_admin']
+            is_admin_val = data['is_admin']
+            if isinstance(is_admin_val, str):
+                is_admin_val = is_admin_val.lower() in ('true', '1', 'yes')
+            user.is_admin = bool(is_admin_val)
             
         db.session.commit()
         return jsonify({'message': '用户权限更新成功'}), 200
@@ -1159,8 +1646,12 @@ def get_all_merchants_stock():
         
         result = []
         for merchant in merchants:
-            # 获取该商户的库存信息
-            stock_items = Stock.query.filter_by(merchant_id=merchant.id).all()
+            # 获取该商户的库存信息（统一过滤零库存，不含深圳）
+            stock_items = Stock.query.filter(
+                Stock.merchant_id == merchant.id,
+                Stock.quantity > 0,
+                Stock.location.is_(None) | Stock.location.notin_(['Shenzhen', 'shenzhen'])
+            ).all()
             
             for item in stock_items:
                 product = Product.query.get(item.product_id)
@@ -1198,18 +1689,27 @@ def get_all_merchants_stock():
 def check_and_export_excel(merchant_id):
     """检查今天是否已经为该商户保存过Excel文件，如果没有则生成"""
     try:
+        # 在无持久化文件系统的环境（如 Vercel）默认禁用归档导出
+        if os.environ.get('ENABLE_ARCHIVE_EXPORT', 'false').lower() != 'true':
+            print('归档导出已禁用（设置 ENABLE_ARCHIVE_EXPORT=true 可启用）')
+            return
         # 获取商户名称
         merchant = Merchant.query.get(merchant_id)
         if not merchant:
             return
         
+        # 确保导出目录存在（固定到项目根目录）
+        base_dir = os.path.abspath(os.path.dirname(__file__))
+        archive_dir = os.path.join(base_dir, 'Archive')
+        os.makedirs(archive_dir, exist_ok=True)
+
         # 生成今天的文件名
         today_str = datetime.now().strftime('%Y%m%d')
-        stock_filename = f"Archive/{merchant.name}_{today_str}_库存.xlsx"
-        records_filename = f"Archive/{merchant.name}_{today_str}_出入库记录.xlsx"
+        safe_name = sanitize_filename(merchant.name)
+        stock_filename = os.path.join(archive_dir, f"{safe_name}_{today_str}_库存.xlsx")
+        records_filename = os.path.join(archive_dir, f"{safe_name}_{today_str}_出入库记录.xlsx")
         
         # 检查文件是否已存在
-        import os
         stock_exists = os.path.exists(stock_filename)
         records_exists = os.path.exists(records_filename)
         
@@ -1231,23 +1731,34 @@ def check_and_export_excel(merchant_id):
 
 # 添加导出库存到Excel的函数
 def export_stock_to_excel(merchant_id):
+    # 在无持久化文件系统的环境（如 Vercel）默认禁用归档导出
+    if os.environ.get('ENABLE_ARCHIVE_EXPORT', 'false').lower() != 'true':
+        return
     # 获取商户名称
     merchant = Merchant.query.get(merchant_id)
     if not merchant:
         return
 
-    # 获取库存信息
-    stock_items = Stock.query.filter_by(merchant_id=merchant_id).all()
-    # 生成文件名
-    filename = f"Archive/{merchant.name}_{datetime.now().strftime('%Y%m%d')}_库存.xlsx"
+    # 获取库存信息（统一过滤零库存）
+    stock_items = Stock.query.filter(
+        Stock.merchant_id == merchant_id,
+        Stock.quantity > 0
+    ).all()
+    # 确保导出目录存在（固定到项目根目录）
+    base_dir = os.path.abspath(os.path.dirname(__file__))
+    archive_dir = os.path.join(base_dir, 'Archive')
+    os.makedirs(archive_dir, exist_ok=True)
+    # 生成文件名（清理商户名）
+    safe_name = sanitize_filename(merchant.name)
+    filename = os.path.join(archive_dir, f"{safe_name}_{datetime.now().strftime('%Y%m%d')}_库存.xlsx")
 
     # 创建Excel文件
     wb = Workbook()
     ws = wb.active
     ws.title = "库存"
 
-    # 添加表头
-    headers = ['产品编号', '品名', '产品类别', '供应商', '产品单位', '香港库存', '深圳库存', '在途数量', '每日消耗', '规格', '箱数', '批次号', '过期日期', '库位', '单价']
+    # 添加表头（不包含产品单位与单价）
+    headers = ['产品编号', '品名', '产品类别', '供应商', '香港库存', '深圳库存', '在途数量', '每日消耗', '规格', '箱数', '批次号', '过期日期', '库位']
     ws.append(headers)
 
     # 添加库存数据
@@ -1258,14 +1769,13 @@ def export_stock_to_excel(merchant_id):
         box_quantity = item.quantity  # 假设库存数量在这里
         expiry_date = item.expiry_date.strftime('%Y-%m-%d') if item.expiry_date else '无'
         location = item.location if item.location else '无'
-        unit_price = item.unit_price if item.unit_price is not None else '无'
+        # 不输出单价
 
         ws.append([
             item.product_id,
             product.name if product else '未知',
             product.category if product else '未知',
             product.supplier if product else '未知',
-            product.unit if product else '未知',
             item.quantity,  # 香港库存
             item.shenzhen_stock,  # 深圳库存
             item.in_transit,  # 在途数量
@@ -1274,8 +1784,7 @@ def export_stock_to_excel(merchant_id):
             box_quantity,  # 箱数
             item.batch_number,  # 批次号
             expiry_date,  # 过期日期
-            location,  # 库位
-            unit_price  # 单价
+            location  # 库位
         ])
 
     # 保存文件
@@ -1283,6 +1792,9 @@ def export_stock_to_excel(merchant_id):
 
 # 添加导出记录到Excel的函数
 def export_records_to_excel(merchant_id):
+    # 在无持久化文件系统的环境（如 Vercel）默认禁用归档导出
+    if os.environ.get('ENABLE_ARCHIVE_EXPORT', 'false').lower() != 'true':
+        return
     # 获取商户名称
     merchant = Merchant.query.get(merchant_id)
     if not merchant:
@@ -1290,16 +1802,21 @@ def export_records_to_excel(merchant_id):
 
     # 获取出入库记录
     records = Record.query.filter_by(merchant_id=merchant_id).all()
-    # 生成文件名
-    filename = f"Archive/{merchant.name}_{datetime.now().strftime('%Y%m%d')}_出入库记录.xlsx"
+    # 确保导出目录存在（固定到项目根目录）
+    base_dir = os.path.abspath(os.path.dirname(__file__))
+    archive_dir = os.path.join(base_dir, 'Archive')
+    os.makedirs(archive_dir, exist_ok=True)
+    # 生成文件名（清理商户名）
+    safe_name = sanitize_filename(merchant.name)
+    filename = os.path.join(archive_dir, f"{safe_name}_{datetime.now().strftime('%Y%m%d')}_出入库记录.xlsx")
 
     # 创建Excel文件
     wb = Workbook()
     ws = wb.active
     ws.title = "出入库记录"
 
-    # 修改表头为新的格式
-    headers = ['日期', '品名', '操作类型', '库位', '数量', '规格', '总数', '批次号', '单价', '过期日期', '操作原因', '操作人']
+    # 修改表头为新的格式（移除单价）
+    headers = ['日期', '品名', '操作类型', '库位', '数量', '规格', '总数', '批次号', '过期日期', '操作原因', '操作人']
     ws.append(headers)
 
     # 添加记录数据
@@ -1321,11 +1838,7 @@ def export_records_to_excel(merchant_id):
         # 计算总数
         total = quantity * box_spec_value
 
-        # 获取单价信息
-        unit_price = '-'  # 默认为未录入
-        if record.additional_info and '单价: ' in record.additional_info:
-            unit_price_str = record.additional_info.split('单价: ')[1].split(',')[0] if ',' in record.additional_info.split('单价: ')[1] else record.additional_info.split('单价: ')[1]
-            unit_price = unit_price_str if unit_price_str != 'None' else '-'
+        # 不处理单价信息
 
         # 提取库位信息
         location = '无'
@@ -1370,7 +1883,6 @@ def export_records_to_excel(merchant_id):
             box_spec,
             total,
             batch_number,
-            unit_price,
             expiry_date,
             reason,
             operator_name
@@ -1379,40 +1891,213 @@ def export_records_to_excel(merchant_id):
     # 保存文件
     wb.save(filename)
 
+# =========================
+# 深圳仓专用 API（独立出入库与记录）
+# =========================
+
+@app.route('/api/shenzhen/stock', methods=['GET'])
+@login_required
+def get_shenzhen_stock():
+    product_id = request.args.get('product_id')
+    merchant_id = current_user.current_merchant_id
+
+    query = Stock.query.filter(
+        Stock.merchant_id == merchant_id,
+        Stock.location.in_(['Shenzhen', 'shenzhen']),
+        Stock.quantity > 0
+    )
+    if product_id:
+        query = query.filter(Stock.product_id == product_id)
+
+    items = []
+    for s in query.all():
+        product = Product.query.filter_by(id=s.product_id, merchant_id=merchant_id).first()
+        items.append({
+            'id': s.id,
+            'product_id': s.product_id,
+            'name': product.name if product else '',
+            'category': product.category if product else '',
+            'supplier': product.supplier if product else '',
+            'unit': product.unit if product else '',
+            'box_spec': s.box_spec,
+            'quantity': s.quantity or 0,
+            'batch_number': s.batch_number or '',
+            'expiry_date': s.expiry_date.strftime('%Y-%m-%d') if s.expiry_date else '',
+            'location': s.location or 'Shenzhen',
+            'daily_consumption': s.daily_consumption or 0,
+            'in_transit': s.in_transit or 0,
+            'unit_price': s.unit_price
+        })
+    return jsonify(items)
+
+
+@app.route('/api/shenzhen/incoming', methods=['POST'])
+@login_required
+def shenzhen_incoming():
+    data = request.json or {}
+    required = ['product_id', 'box_spec', 'quantity', 'batch_number', 'expiry_date']
+    if any(not data.get(k) for k in required):
+        return jsonify({'message': '缺少必要字段'}), 400
+
+    try:
+        qty = int(data.get('quantity'))
+    except Exception:
+        return jsonify({'message': '数量格式不正确'}), 400
+    if qty <= 0:
+        return jsonify({'message': '数量必须大于0'}), 400
+
+    try:
+        expiry_date_obj = datetime.strptime(data['expiry_date'], '%Y-%m-%d').date()
+    except Exception:
+        return jsonify({'message': '过期日期格式应为 YYYY-MM-DD'}), 400
+
+    merchant_id = current_user.current_merchant_id
+
+    # 查找现有深圳库存（按产品、规格、批次、过期日期、库位）
+    stock = Stock.query.filter_by(
+        product_id=data['product_id'],
+        box_spec=data['box_spec'],
+        batch_number=data['batch_number'],
+        expiry_date=expiry_date_obj,
+        location='Shenzhen',
+        merchant_id=merchant_id
+    ).first()
+
+    if stock:
+        stock.quantity = (stock.quantity or 0) + qty
+    else:
+        stock = Stock(
+            product_id=data['product_id'],
+            box_spec=data['box_spec'],
+            quantity=qty,
+            batch_number=data['batch_number'],
+            expiry_date=expiry_date_obj,
+            location='Shenzhen',
+            merchant_id=merchant_id,
+            unit_price=0.0
+        )
+        db.session.add(stock)
+
+    # 写入深圳出入库记录（仅深圳页面展示）
+    rec = ShenzhenRecord(
+        id=generateUniqueId(),
+        product_id=data['product_id'],
+        operation_type='入库',
+        quantity=qty,
+        box_spec=data['box_spec'],
+        batch_number=data['batch_number'],
+        expiry_date=expiry_date_obj,
+        merchant_id=merchant_id,
+        operator_id=current_user.id
+    )
+    db.session.add(rec)
+
+    try:
+        db.session.commit()
+        return jsonify({'message': '深圳入库成功'}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': '深圳入库失败', 'error': str(e)}), 500
+
+
+@app.route('/api/shenzhen/outgoing', methods=['POST'])
+@login_required
+def shenzhen_outgoing():
+    data = request.json or {}
+    required = ['product_id', 'box_spec', 'quantity']
+    if any(not data.get(k) for k in required):
+        return jsonify({'message': '缺少必要字段'}), 400
+
+    try:
+        qty = int(data.get('quantity'))
+    except Exception:
+        return jsonify({'message': '数量格式不正确'}), 400
+    if qty <= 0:
+        return jsonify({'message': '数量必须大于0'}), 400
+
+    batch_number = data.get('batch_number') or None
+    expiry_date_str = data.get('expiry_date') or None
+    expiry_date_obj = None
+    if expiry_date_str:
+        try:
+            expiry_date_obj = datetime.strptime(expiry_date_str, '%Y-%m-%d').date()
+        except Exception:
+            return jsonify({'message': '过期日期格式应为 YYYY-MM-DD'}), 400
+
+    merchant_id = current_user.current_merchant_id
+
+    # 匹配深圳库存记录
+    query = Stock.query.filter(
+        Stock.product_id == data['product_id'],
+        Stock.box_spec == data['box_spec'],
+        Stock.location == 'Shenzhen',
+        Stock.merchant_id == merchant_id
+    )
+    if batch_number:
+        query = query.filter(Stock.batch_number == batch_number)
+    if expiry_date_obj:
+        query = query.filter(Stock.expiry_date == expiry_date_obj)
+
+    stock = query.first()
+    if not stock:
+        return jsonify({'message': '未找到对应深圳库存记录'}), 400
+    if (stock.quantity or 0) < qty:
+        return jsonify({'message': '深圳库存不足'}), 400
+
+    stock.quantity = (stock.quantity or 0) - qty
+
+    # 写入深圳出库记录
+    rec = ShenzhenRecord(
+        id=generateUniqueId(),
+        product_id=data['product_id'],
+        operation_type='出库',
+        quantity=qty,
+        box_spec=data['box_spec'],
+        batch_number=batch_number,
+        expiry_date=expiry_date_obj,
+        merchant_id=merchant_id,
+        operator_id=current_user.id
+    )
+    db.session.add(rec)
+
+    try:
+        db.session.commit()
+        return jsonify({'message': '深圳出库成功'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': '深圳出库失败', 'error': str(e)}), 500
+
+
+@app.route('/api/shenzhen/records', methods=['GET'])
+@login_required
+def get_shenzhen_records():
+    product_id = request.args.get('product_id')
+    merchant_id = current_user.current_merchant_id
+
+    query = ShenzhenRecord.query.filter(ShenzhenRecord.merchant_id == merchant_id)
+    if product_id:
+        query = query.filter(ShenzhenRecord.product_id == product_id)
+
+    records = []
+    for r in query.order_by(ShenzhenRecord.date.desc()).all():
+        records.append({
+            'date': r.date.strftime('%Y-%m-%d %H:%M:%S'),
+            'operation_type': r.operation_type,
+            'box_spec': r.box_spec,
+            'quantity': r.quantity,
+            'batch_number': r.batch_number or '',
+            'expiry_date': r.expiry_date.strftime('%Y-%m-%d') if r.expiry_date else '',
+            'operator': (r.operator.username if r.operator else '')
+        })
+    return jsonify(records)
+
 if __name__ == '__main__':
     with app.app_context():
-        # 创建数据库表
+        # 创建数据库表并初始化默认数据
         db.create_all()
-        
-        # 检查并创建默认权限
-        default_permissions = [
-            {"name": "product_manage", "description": "产品管理权限"},
-            {"name": "incoming_operate", "description": "入库操作权限"},
-            {"name": "outgoing_operate", "description": "出库操作权限"},
-            {"name": "records_view", "description": "查看出入库记录权限"},
-            {"name": "stock_view", "description": "查看库存权限"},
-            {"name": "user_manage", "description": "用户管理权限"},
-            {"name": "location_query", "description": "库位查询权限"},
-            {"name": "record_edit", "description": "修改记录权限"}
-        ]
-        
-        for perm_data in default_permissions:
-            perm = Permission.query.filter_by(name=perm_data["name"]).first()
-            if not perm:
-                perm = Permission(name=perm_data["name"], description=perm_data["description"])
-                db.session.add(perm)
-                print(f"创建权限: {perm_data['name']}")
-        
-        # 检查并创建管理员账户
-        admin = User.query.filter_by(username=DEFAULT_USERNAME).first()
-        if not admin:
-            admin = User(username=DEFAULT_USERNAME, is_admin=True)
-            admin.set_password(DEFAULT_PASSWORD)
-            db.session.add(admin)
-            print(f"创建管理员账户: {DEFAULT_USERNAME}")
-        
-        db.session.commit()
-        print("系统初始化完成")
-        
-    # 启动应用
-    app.run(debug=True)
+        seed_defaults()
+        # 运行一次管理员密码兼容处理（Flask 3移除before_first_request）
+        ensure_admin_password_compat_seed()
+
+    # 启动应用，支持通过环境变量 PORT 指定端口
+    app.run(debug=True, port=int(os.environ.get('PORT', 5000)))

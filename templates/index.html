@@ -10,6 +10,8 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/0.4.1/html2canvas.min.js"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script src="{{ url_for('static', filename='outgoing.js') }}"></script>
+    <script src="{{ url_for('static', filename='shenzhen.js') }}"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.16.9/xlsx.full.min.js"></script>
     <style>
         body {
@@ -216,22 +218,6 @@
                         <label for="new-product-supplier">供应商:</label>
                         <input type="text" id="new-product-supplier" required>
                     </div>
-                    <div>
-                        <label for="new-product-unit">产品单位:</label>
-                        <select id="new-product-unit" required>
-                            <option value="">请选择单位</option>
-                            <option value="个">个</option>
-                            <option value="包">包</option>
-                            <option value="单">单</option>
-                            <option value="卷">卷</option>
-                            <option value="张">张</option>
-                            <option value="扎">扎</option>
-                            <option value="瓶">瓶</option>
-                            <option value="盒">盒</option>
-                            <option value="箱">箱</option>
-                            <option value="颗">颗</option>
-                        </select>
-                    </div>
                     <div class="form-button-container">
                         <button onclick="addProduct()">新增</button>
                     </div>
@@ -247,7 +233,6 @@
 
                 <button onclick="sortProductList('category')">按产品类别排序</button>
                 <button onclick="sortProductList('supplier')">按供应商排序</button>
-                <button onclick="sortProductList('unit')">按产品单位排序</button>
                 <!-- 产品列表表格，动态显示所有产品信息 -->
                 <div class="table-container">
                     <table id="product-list">
@@ -257,7 +242,6 @@
                                 <th>品名</th>
                                 <th>产品类别</th>
                                 <th>供应商</th>
-                                <th>产品单位</th>
                                 <th class="actions-column">操作</th>
                             </tr>
                         </thead>
@@ -294,7 +278,6 @@
                     <select id="incoming-reason" required>
                         <option value="采购" selected>采购</option>
                         <option value="盘盈">盘盈</option>
-                        <option value="移位">移位</option>
                         <option value="操作失误">操作失误</option>
                     </select>
                 </div>
@@ -347,7 +330,7 @@
                         <option value="O401">O401</option>
                         <option value="O402">O402</option>
                         <option value="O403">O403</option>
-                        <option value="Shenzhen">Shenzhen</option>
+                        <option value="10F">10F</option>
                     </select>
                 </div>
                 <div class="form-button-container">
@@ -387,7 +370,7 @@
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h2 style="margin: 0;">出库操作</h2>
                 <div class="outgoing-actions">
-                    <button onclick="showTab('relocation')" style="background-color: #2196F3;">移位操作</button>
+                    
                 </div>
             </div>
             <!-- 出库产品选择和数量输入区域，使用新的网格布局 -->
@@ -414,7 +397,6 @@
                         <option value="生产" selected>生产</option>
                         <option value="报废">报废</option>
                         <option value="盘亏">盘亏</option>
-                        <option value="移位">移位</option>
                         <option value="操作失误">操作失误</option>
                     </select>
                 </div>
@@ -448,108 +430,7 @@
             </div>
         </div>
 
-        <!-- 移位操作模块，处理产品移位流程和记录 -->
-        <div id="relocation" class="tab-content" style="display: none;">
-            <h2>移位操作</h2>
-            <!-- 选择产品和规格 -->
-            <div class="form-layout">
-                <div>
-                    <label for="relocation-product-select">选择产品:</label>
-                    <select id="relocation-product-select" onchange="showProductSpecsForRelocation()">
-                        <option value="">请选择产品</option>
-                    </select>
-                </div>
-                <div>
-                    <label for="relocation-box-spec">选择规格:</label>
-                    <select id="relocation-box-spec">
-                        <option value="">请选择规格</option>
-                    </select>
-                </div>
-                <div>
-                    <label for="relocation-quantity">移位数量:</label>
-                    <input type="number" id="relocation-quantity" placeholder="移位数量" min="1" required>
-                </div>
-                <div>
-                    <label for="relocation-new-location">新库位:</label>
-                    <select id="relocation-new-location" required>
-                        <option value="">请选择新库位</option>
-                        <option value="A1">A1</option>
-                        <option value="A2">A2</option>
-                        <option value="A3">A3</option>
-                        <option value="A4">A4</option>
-                        <option value="A5">A5</option>
-                        <option value="A6">A6</option>
-                        <option value="A7">A7</option>
-                        <option value="A8">A8</option>
-                        <option value="A12">A12</option>
-                        <option value="A13">A13</option>
-                        <option value="A14">A14</option>
-                        <option value="A15">A15</option>
-                        <option value="A16">A16</option>
-                        <option value="A17">A17</option>
-                        <option value="A18">A18</option>
-                        <option value="A19">A19</option>
-                        <option value="A20">A20</option>
-                        <option value="A21">A21</option>
-                        <option value="A22">A22</option>
-                        <option value="A23">A23</option>
-                        <option value="B1">B1</option>
-                        <option value="B2">B2</option>
-                        <option value="B3">B3</option>
-                        <option value="B4">B4</option>
-                        <option value="B5">B5</option>
-                        <option value="B6">B6</option>
-                        <option value="B7">B7</option>
-                        <option value="B8">B8</option>
-                        <option value="B9">B9</option>
-                        <option value="B10">B10</option>
-                        <option value="B11">B11</option>
-                        <option value="B12">B12</option>
-                        <option value="B13">B13</option>
-                        <option value="B15">B15</option>
-                        <option value="C1">C1</option>
-                        <option value="O301">O301</option>
-                        <option value="O302">O302</option>
-                        <option value="O303">O303</option>
-                        <option value="O401">O401</option>
-                        <option value="O402">O402</option>
-                        <option value="O403">O403</option>
-                        <option value="Shenzhen">Shenzhen</option>
-                    </select>
-                </div>
-                <div class="form-button-container">
-                    <button onclick="addToRelocationList()">添加到待移位列表</button>
-                </div>
-            </div>
 
-            <!-- 待移位列表 -->
-            <h3>待移位列表</h3>
-            <div class="table-container">
-                <table id="relocation-products-table">
-                    <thead>
-                        <tr>
-                            <th>品名</th>
-                            <th>原库位</th>
-                            <th>新库位</th>
-                            <th>规格</th>
-                            <th>箱数</th>
-                            <th>批次号</th>
-                            <th>过期日期</th>
-                            <th>操作</th>
-                        </tr>
-                    </thead>
-                    <tbody id="relocation-products-body"></tbody>
-                </table>
-            </div>
-            <!-- 移位操作按钮 -->
-            <div class="relocation-actions">
-                <button onclick="confirmRelocation()">确认移位</button>
-            </div>
-            <div class="form-layout">
-                <div>
-                </div>
-            </div>
-        </div>
 
         <!-- 出入库记录模块，显示历史操作记录 -->
         <div id="records" class="tab-content" style="display: none;">
@@ -650,7 +531,6 @@
                         <tr>
                             <th onclick="sortStockList('product_id')" style="cursor: pointer;">产品编号 <span id="sort-product_id"></span></th>
                             <th>品名</th>
-                            <th>产品单位</th>
                             <th>在途数量</th>
                             <th>深圳库存</th>
                             <th>香港库存</th>
